@@ -227,6 +227,7 @@ static void render_window(struct imv *imv);
 static void update_env_vars(struct imv *imv);
 static size_t generate_env_text(struct imv *imv, char *buf, size_t len, const char *format);
 static size_t read_from_stdin(void **buffer);
+static void imv_backends_free(struct list *backends);
 
 /* Finds the next split between commands in a string (';'). Provides a pointer
  * to the next character after the delimiter as out, or a pointer to '\0' if
@@ -673,7 +674,7 @@ void imv_free(struct imv *imv)
     imv_window_free(imv->window);
   }
 
-  list_free(imv->backends);
+  imv_backends_free(imv->backends);
 
   list_free(imv->startup_commands);
 
@@ -682,7 +683,20 @@ void imv_free(struct imv *imv)
 
 void imv_install_backend(struct imv *imv, const struct imv_backend *backend)
 {
-  list_append(imv->backends, (void*)backend);
+  if (!backend->init || backend->init() == BACKEND_SUCCESS) {
+    list_append(imv->backends, (void*)backend);
+  }
+}
+
+static void imv_backends_free(struct list *backends)
+{
+  for (size_t i = 0; i < backends->len; ++i) {
+    struct imv_backend *backend = backends->items[i];
+    if (backend->uninit) {
+      backend->uninit();
+    }
+  }
+  list_free(backends);
 }
 
 static bool parse_bg(struct imv *imv, const char *bg)

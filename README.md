@@ -139,7 +139,7 @@ Installation
 | librsvg        | >=v2.44  | Optional. Provides SVG support.                |
 | libnsgif       | 1.0.0    | Optional. Provides animated GIF support.       |
 | libnsbmp       |          | Optional. Provides BMP support.                |
-| libheif        |          | Optional. Provides HEIF support.               |
+| libheif        | 1.13.0   | Optional. Provides HEIF support.               |
 | libjxl         |          | Optional. Provides JPEGXL support.             |
 | libwebp        |          | Optional. Provides WebP supprt.                |
 | qoi            |          | Optional. Provides QOI support.                |

@@ -139,7 +139,7 @@ foreach backend : [
   ['librsvg', 'dependency', 'librsvg-2.0', '>= 2.44', ['image/svg+xml']],
   ['libnsgif', 'dependency', 'libnsgif', '1.0.0', ['image/gif']],
   ['libnsbmp', 'dependency', 'libnsbmp', [], ['image/bmp', 'image/x-bmp']],
-  ['libheif', 'dependency', 'libheif', [], ['image/heif', 'image/avif']],
+  ['libheif', 'dependency', 'libheif', '>= 1.13.0', ['image/heif', 'image/avif']],
   ['libjxl', 'dependency', 'libjxl', [], ['image/jxl']],
   ['libwebp', 'dependency', 'libwebpdecoder', [], ['image/webp']],
   ['qoi', 'header', 'qoi.h', [], ['image/qoi']],

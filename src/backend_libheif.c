@@ -5,6 +5,7 @@
 #include "backend.h"
 #include "bitmap.h"
 #include "image.h"
+#include "log.h"
 #include "source_private.h"
 
 struct private {
@@ -64,10 +65,15 @@ struct heif_error get_primary_image(struct heif_context *ctx, struct heif_image 
   struct heif_image_handle *handle;
   struct heif_error err = heif_context_get_primary_image_handle(ctx, &handle);
   if (err.code != heif_error_Ok) {
+    imv_log(IMV_ERROR, "libheif: failed to get image handle (%s)\n", err.message);
     return err;
   }
 
   err = heif_decode_image(handle, img, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, NULL);
+  if (err.code != heif_error_Ok) {
+    imv_log(IMV_ERROR, "libheif: failed to decode image (%s)\n", err.message);
+  }
+
   heif_image_handle_release(handle);
   return err;
 }
@@ -119,6 +125,22 @@ static enum backend_result open_memory(void *data, size_t len, struct imv_source
   return BACKEND_SUCCESS;
 }
 
+static enum backend_result init(void)
+{
+    struct heif_error err = heif_init(NULL);
+    if (err.code != heif_error_Ok) {
+        imv_log(IMV_ERROR, "libheif: failed to initialize backend (%s)\n", err.message);
+        heif_deinit();
+        return BACKEND_UNSUPPORTED;
+    }
+    return BACKEND_SUCCESS;
+}
+
+static void uninit(void)
+{
+    heif_deinit();
+}
+
 const struct imv_backend imv_backend_libheif = {
   .name = "libheif",
   .description = "ISO/IEC 23008-12:2017 HEIF file format decoder and encoder.",
@@ -126,4 +148,6 @@ const struct imv_backend imv_backend_libheif = {
   .license = "GNU Lesser General Public License",
   .open_path = &open_path,
   .open_memory = &open_memory,
+  .init = &init,
+  .uninit = &uninit,
 };
