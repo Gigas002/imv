@@ -10,6 +10,7 @@ packages:
   - libinih
   - libjpeg-turbo
   - libjxl
+  - libnsgif
   - libpng
   - librsvg
   - libtiff
@@ -23,10 +24,9 @@ packages:
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
-  # arch ships libnsgif 1.0.0 which is too new
   - gcc: |
-      CC=gcc meson imv build_gcc -D auto_features=enabled -D libnsgif=disabled
+      CC=gcc meson imv build_gcc -D auto_features=enabled
       CC=gcc ninja -C build_gcc test
   - clang: |
-      CC=clang meson imv build_clang -D auto_features=enabled -D libnsgif=disabled
+      CC=clang meson imv build_clang -D auto_features=enabled
       CC=clang ninja -C build_clang test

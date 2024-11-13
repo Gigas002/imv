@@ -6,6 +6,7 @@ Unreleased
 
 BREAKING CHANGES:
 * FreeImage support is dropped as the library is unmaintained and contains unpatched vulnerabilities
+* libnsgif now requires version 1.0.0
 
 * Fix linking errors with icu > 75
 

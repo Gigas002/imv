@@ -136,7 +136,7 @@ Installation
 | libpng         |          | Optional. Provides PNG support.                |
 | libjpeg-turbo  |          | Optional. Provides JPEG support.               |
 | librsvg        | >=v2.44  | Optional. Provides SVG support.                |
-| libnsgif       |          | Optional. Provides animated GIF support.       |
+| libnsgif       | 1.0.0    | Optional. Provides animated GIF support.       |
 | libheif        |          | Optional. Provides HEIF support.               |
 | libjxl         |          | Optional. Provides JPEGXL support.             |
 
