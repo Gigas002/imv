@@ -11,6 +11,7 @@ extern const struct imv_backend imv_backend_libnsgif;
 extern const struct imv_backend imv_backend_libnsbmp;
 extern const struct imv_backend imv_backend_libheif;
 extern const struct imv_backend imv_backend_libjxl;
+extern const struct imv_backend imv_backend_libwebp;
 extern const struct imv_backend imv_backend_qoi;
 
 int main(int argc, char **argv)
@@ -55,6 +56,10 @@ int main(int argc, char **argv)
 
 #ifdef IMV_BACKEND_LIBJXL
   imv_install_backend(imv, &imv_backend_libjxl);
+#endif
+
+#ifdef IMV_BACKEND_LIBWEBP
+  imv_install_backend(imv, &imv_backend_libwebp);
 #endif
 
 #ifdef IMV_BACKEND_QOI

@@ -16,6 +16,7 @@ packages:
   - libtiff-dev
   - libturbojpeg-dev
   - libwayland-dev
+  - libwebp-dev
   - libx11-dev
   - libxcb1-dev
   - libxkbcommon-dev

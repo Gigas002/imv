@@ -15,6 +15,7 @@ Features
 * Support for dozens of image formats including:
   * PNG
   * JPEG
+  * WebP
   * Animated GIFs
   * SVG
   * TIFF
@@ -140,6 +141,7 @@ Installation
 | libnsbmp       |          | Optional. Provides BMP support.                |
 | libheif        |          | Optional. Provides HEIF support.               |
 | libjxl         |          | Optional. Provides JPEGXL support.             |
+| libwebp        |          | Optional. Provides WebP supprt.                |
 | qoi            |          | Optional. Provides QOI support.                |
 
 Dependencies are determined by which backends and window systems are enabled

@@ -14,6 +14,7 @@ packages:
   - libpng
   - librsvg
   - libtiff
+  - libwebp
   - libx11
   - libxcb
   - libxkbcommon

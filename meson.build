@@ -141,6 +141,7 @@ foreach backend : [
   ['libnsbmp', 'dependency', 'libnsbmp', [], ['image/bmp', 'image/x-bmp']],
   ['libheif', 'dependency', 'libheif', [], ['image/heif', 'image/avif']],
   ['libjxl', 'dependency', 'libjxl', [], ['image/jxl']],
+  ['libwebp', 'dependency', 'libwebpdecoder', [], ['image/webp']],
   ['qoi', 'header', 'qoi.h', [], ['image/qoi']],
 ]
   _backend_name = backend[0]

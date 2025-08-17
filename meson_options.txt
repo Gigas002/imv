@@ -106,6 +106,14 @@ option('libjxl',
   description : 'provides: jxl'
 )
 
+# libwebp https://developers.google.com/speed/webp
+# depends: none
+# license: modified bsd
+option('libwebp',
+  type : 'feature',
+  description : 'provides: webp'
+)
+
 # qoi https://qoiformat.org/
 # depends: none
 # license: MIT

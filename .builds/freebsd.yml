@@ -11,6 +11,7 @@ packages:
   - graphics/libnsgif
   - graphics/libnsbmp
   - graphics/librsvg2-rust
+  - graphics/webp
   - graphics/png
   - graphics/tiff
   - graphics/wayland-protocols
