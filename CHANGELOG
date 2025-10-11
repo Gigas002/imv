@@ -1,6 +1,11 @@
 imv Changelog
 =============
 
+Unreleased
+-------------------
+
+* Fix linking errors with icu > 75
+
 v4.5.0 - 2024-02-20
 -------------------
 
