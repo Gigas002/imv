@@ -4,6 +4,9 @@ imv Changelog
 Unreleased
 -------------------
 
+BREAKING CHANGES:
+* FreeImage support is dropped as the library is unmaintained and contains unpatched vulnerabilities
+
 * Fix linking errors with icu > 75
 
 v4.5.0 - 2024-02-20

@@ -34,14 +34,6 @@ option('man',
 
 # Available backends:
 
-# FreeImage http://freeimage.sourceforge.net
-# depends: libjpeg, openexr, openjpeg2, libwebp, libraw, jxrlib
-# license: FIPL v1.0
-option('freeimage',
-  type : 'feature',
-  description : 'provides: png, jpg, animated gif, raw, psd, bmp, tiff, webp, etc.'
-)
-
 # libtiff
 # depends: libjpeg  zlib  xz  zstd
 # license: MIT

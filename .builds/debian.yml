@@ -4,7 +4,6 @@ packages:
   - clang
   - libcmocka-dev
   - libegl1-mesa-dev
-  - libfreeimage-dev
   - libglu-dev
   - libheif-dev
   - libicu-dev

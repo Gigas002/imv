@@ -31,7 +31,7 @@ licensing requirements.
 
 By default, the libraries available are detected and support for them is
 automatically enabled, but you can enable or disable specific ones by
-passing `-D freeimage=enabled` or `-D libtiff=disabled`.
+passing `-D libpng=enabled` or `-D libtiff=disabled`.
 You can also make sure all the backends are enabled by passing
 `-D auto_features=enabled`.
 

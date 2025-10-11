@@ -120,7 +120,6 @@ files_msg = files('src/imv_msg.c', 'src/ipc_common.c')
 
 enabled_backends = []
 foreach backend : [
-  ['freeimage', 'library', 'freeimage'],
   ['libtiff', 'dependency', 'libtiff-4', []],
   ['libpng', 'dependency', 'libpng', []],
   ['libjpeg', 'dependency', 'libturbojpeg', []],

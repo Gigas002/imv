@@ -2,7 +2,7 @@
 Name=imv
 GenericName=Image viewer
 GenericName[en_US]=Image viewer
-Comment=Fast freeimage-based Image Viewer
+Comment=Fast Image Viewer
 Exec=imv %F
 NoDisplay=true
 Terminal=false

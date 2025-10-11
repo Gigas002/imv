@@ -2,7 +2,6 @@
 
 struct imv_backend;
 
-extern const struct imv_backend imv_backend_freeimage;
 extern const struct imv_backend imv_backend_libpng;
 extern const struct imv_backend imv_backend_librsvg;
 extern const struct imv_backend imv_backend_libtiff;
@@ -18,10 +17,6 @@ int main(int argc, char **argv)
   if (!imv) {
     return 1;
   }
-
-#ifdef IMV_BACKEND_FREEIMAGE
-  imv_install_backend(imv, &imv_backend_freeimage);
-#endif
 
 #ifdef IMV_BACKEND_LIBTIFF
   imv_install_backend(imv, &imv_backend_libtiff);
