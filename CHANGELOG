@@ -9,6 +9,7 @@ BREAKING CHANGES:
 * libnsgif now requires version 1.0.0
 
 * Fix linking errors with icu > 75
+* Fix displaying HEIF images with odd width
 
 v4.5.0 - 2024-02-20
 -------------------

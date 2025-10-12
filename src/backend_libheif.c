@@ -21,6 +21,12 @@ static void free_private(void *raw_private)
   free(private);
 }
 
+static void copy_with_stride(unsigned char *dst, const unsigned char *src, int width, int height, int stride) {
+  for (int i = 0; i < height; i++) {
+    memcpy(&dst[i * width * 4], &src[i*stride], width * 4);
+  }
+}
+
 static void load_image(void *raw_private, struct imv_image **image, int *frametime)
 {
   *image = NULL;
@@ -34,7 +40,11 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   int width = heif_image_get_width(private->img, heif_channel_interleaved);
   int height = heif_image_get_height(private->img, heif_channel_interleaved);
   unsigned char *bitmap = malloc(width * height * 4);
-  memcpy(bitmap, data, width * height * 4);
+  if (width * 4 == stride) {
+    memcpy(bitmap, data, width * height * 4);
+  } else {
+    copy_with_stride(bitmap, data, width, height, stride);
+  }
 
   struct imv_bitmap *bmp = malloc(sizeof *bmp);
   bmp->width = width,
