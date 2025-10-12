@@ -2,7 +2,7 @@ image: fedora/latest
 packages:
   - asciidoc
   - clang
-  - inih
+  - inih-devel
   - libX11-devel
   - libcmocka-devel
   - libheif-devel
