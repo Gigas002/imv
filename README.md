@@ -144,7 +144,7 @@ Dependencies are determined by which backends and window systems are enabled
 when building `imv`. You can find a summary of which backends are available
 in [meson_options.txt](meson_options.txt)
 
-    $ meson build/
+    $ meson setup build/
     $ ninja -C build/
     # ninja -C build/ install
 
@@ -152,7 +152,7 @@ in [meson_options.txt](meson_options.txt)
 paths is required, `--bindir`, `--mandir` and `--datadir` are
 available.  Eg. to install `imv` to home directory, run:
 
-    $ meson --bindir=~/bin --prefix=~/.local
+    $ meson setup --bindir=~/bin --prefix=~/.local
 
 License
 -------

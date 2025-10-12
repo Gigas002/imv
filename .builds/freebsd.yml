@@ -20,5 +20,5 @@ sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
   - meson: |
-      meson imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib'
+      meson setup imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib'
       ninja -C build test

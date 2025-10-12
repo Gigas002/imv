@@ -10,7 +10,7 @@ project(
 version = '@0@'.format(meson.project_version())
 prog_git = find_program('git', required: false)
 if prog_git.found()
-  git_description = run_command([prog_git.path(), 'describe', '--dirty', '--always', '--tags'])
+  git_description = run_command([prog_git, 'describe', '--dirty', '--always', '--tags'], check: false)
   if git_description.returncode() == 0
     version = git_description.stdout().strip()
   endif
