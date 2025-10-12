@@ -126,7 +126,7 @@ Installation
 | pangocairo     |          | Required.                                      |
 | icu            |          | Required.                                      |
 | X11            |          | Optional. Required for X11 support.            |
-| GLU            |          | Optional. Required for X11 support.            |
+| GL             |          | Optional. Required for X11 support.            |
 | xcb            |          | Optional. Required for X11 support.            |
 | xkbcommon-x11  |          | Optional. Required for X11 support.            |
 | wayland-client |          | Optional. Required for Wayland support.        |

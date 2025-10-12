@@ -3,7 +3,7 @@ packages:
   - devel/icu
   - devel/meson
   - devel/pkgconf
-  - graphics/libGLU
+  - graphics/libglvnd
   - graphics/libheif
   - graphics/libjpeg-turbo
   - graphics/libjxl

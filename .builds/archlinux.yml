@@ -3,7 +3,6 @@ packages:
   - asciidoc
   - clang
   - cmocka
-  - glu
   - icu
   - libglvnd
   - libheif

@@ -107,7 +107,6 @@ if build_x11
   deps_for_x11 = [
     dependency('x11'),
     dependency('gl'),
-    dependency('glu'),
     dependency('xcb'),
     dependency('xkbcommon-x11'),
   ]
