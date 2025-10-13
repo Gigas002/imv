@@ -7,12 +7,25 @@
 #include <librsvg/rsvg.h>
 #endif
 
+enum image_type {
+  IMV_IMAGE_BITMAP,
+#ifdef IMV_BACKEND_LIBRSVG
+  IMV_IMAGE_SVG,
+#endif
+};
+
 struct imv_image;
+
+enum image_type imv_image_get_type(struct imv_image *image);
 
 struct imv_image *imv_image_create_from_bitmap(struct imv_bitmap *bmp);
 
+struct imv_bitmap *imv_image_get_bitmap(const struct imv_image *image);
+
 #ifdef IMV_BACKEND_LIBRSVG
 struct imv_image *imv_image_create_from_svg(RsvgHandle *handle);
+
+RsvgHandle *imv_image_get_svg(const struct imv_image *image);
 #endif
 
 /* Cleans up an imv_image instance */

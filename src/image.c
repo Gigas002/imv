@@ -3,21 +3,28 @@
 #include "bitmap.h"
 
 #include <stdlib.h>
+#include <assert.h>
+#include <stdbool.h>
 
 struct imv_image {
-  int width;
-  int height;
-  struct imv_bitmap *bitmap;
-  #ifdef IMV_BACKEND_LIBRSVG
-  RsvgHandle *svg;
-  #endif
+  enum image_type type;
+  union {
+    struct imv_bitmap *bitmap;
+    #ifdef IMV_BACKEND_LIBRSVG
+    RsvgHandle *svg;
+    #endif
+  };
 };
+
+enum image_type imv_image_get_type(struct imv_image *image) {
+  assert(image);
+  return image->type;
+}
 
 struct imv_image *imv_image_create_from_bitmap(struct imv_bitmap *bmp)
 {
   struct imv_image *image = calloc(1, sizeof *image);
-  image->width = bmp->width;
-  image->height = bmp->height;
+  image->type = IMV_IMAGE_BITMAP;
   image->bitmap = bmp;
   return image;
 }
@@ -26,12 +33,8 @@ struct imv_image *imv_image_create_from_bitmap(struct imv_bitmap *bmp)
 struct imv_image *imv_image_create_from_svg(RsvgHandle *handle)
 {
   struct imv_image *image = calloc(1, sizeof *image);
+  image->type = IMV_IMAGE_SVG;
   image->svg = handle;
-
-  RsvgDimensionData dim;
-  rsvg_handle_get_dimensions(handle, &dim);
-  image->width = dim.width;
-  image->height = dim.height;
   return image;
 }
 #endif
@@ -42,39 +45,69 @@ void imv_image_free(struct imv_image *image)
     return;
   }
 
-  if (image->bitmap) {
-    imv_bitmap_free(image->bitmap);
-  }
-
+  switch (image->type) {
+    case IMV_IMAGE_BITMAP:
+      imv_bitmap_free(image->bitmap);
+      break;
 #ifdef IMV_BACKEND_LIBRSVG
-  if (image->svg) {
-    g_object_unref(image->svg);
-  }
+    case IMV_IMAGE_SVG: {
+      g_object_unref(image->svg);
+      break;
+    }
 #endif
+  }
 
   free(image);
 }
 
 int imv_image_width(const struct imv_image *image)
 {
-  return image ? image->width : 0;
+  if (!image) {
+    return 0;
+  }
+  switch (image->type) {
+    case IMV_IMAGE_BITMAP:
+      return image->bitmap->width;
+#ifdef IMV_BACKEND_LIBRSVG
+    case IMV_IMAGE_SVG: {
+      RsvgDimensionData dims;
+      rsvg_handle_get_dimensions(image->svg, &dims);
+      return dims.width;
+    }
+#endif
+  }
+  assert(false);
 }
 
 int imv_image_height(const struct imv_image *image)
 {
-  return image ? image->height : 0;
+  if (!image) {
+    return 0;
+  }
+  switch (image->type) {
+    case IMV_IMAGE_BITMAP:
+      return image->bitmap->height;
+#ifdef IMV_BACKEND_LIBRSVG
+    case IMV_IMAGE_SVG: {
+      RsvgDimensionData dims;
+      rsvg_handle_get_dimensions(image->svg, &dims);
+      return dims.height;
+    }
+#endif
+  }
+  assert(false);
 }
 
 /* Non-public functions, only used by imv_canvas */
 struct imv_bitmap *imv_image_get_bitmap(const struct imv_image *image)
 {
-  return image->bitmap;
+  return image->type == IMV_IMAGE_BITMAP ? image->bitmap : NULL;
 }
 
 #ifdef IMV_BACKEND_LIBRSVG
 RsvgHandle *imv_image_get_svg(const struct imv_image *image)
 {
-  return image->svg;
+  return image->type == IMV_IMAGE_SVG ? image->svg : NULL;
 }
 #endif
 
