@@ -28,15 +28,20 @@ int main(int argc, char **argv)
   }
 
   char buf[4096] = {0};
+  int len = 0;
   for (int i = 2; i < argc; ++i) {
-    strncat(buf, argv[i], sizeof buf - 1);
-    if (i + 1 < argc) {
-      strncat(buf, " ", sizeof buf - 1);
+    size_t arg_len = strlen(argv[i]);
+    if (len + arg_len + 1 >= sizeof buf) {
+      fprintf(stderr, "Command cannot be longer than %lu\n", sizeof buf);
+      return 1;
     }
+    memcpy(buf + len, argv[i], arg_len);
+    len += arg_len;
+    buf[len++] = ' ';
   }
-  strncat(buf, "\n", sizeof buf - 1);
+  buf[len-1] = '\n';
 
-  write(sockfd, buf, strlen(buf));
+  write(sockfd, buf, len);
   close(sockfd);
   return 0;
 }
