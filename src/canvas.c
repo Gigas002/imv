@@ -31,7 +31,8 @@ struct imv_canvas {
   int height;
   struct {
     struct imv_bitmap *bitmap;
-    GLuint texture;
+    size_t tex_count;
+    GLuint *textures;
   } cache;
   GLuint checkers_texture;
 };
@@ -83,8 +84,11 @@ void imv_canvas_free(struct imv_canvas *canvas)
   cairo_surface_destroy(canvas->surface);
   canvas->surface = NULL;
   glDeleteTextures(1, &canvas->texture);
-  if (canvas->cache.texture) {
-    glDeleteTextures(1, &canvas->cache.texture);
+  if (canvas->cache.tex_count) {
+    glDeleteTextures(canvas->cache.tex_count, canvas->cache.textures);
+    canvas->cache.tex_count = 0;
+    free(canvas->cache.textures);
+    canvas->cache.textures = NULL;
   }
   glDeleteTextures(1, &canvas->checkers_texture);
   free(canvas);
@@ -249,7 +253,7 @@ void imv_canvas_draw(struct imv_canvas *canvas)
   glPopMatrix();
 }
 
-static int convert_pixelformat(enum imv_pixelformat fmt)
+static GLenum convert_pixelformat(enum imv_pixelformat fmt)
 {
   /* opengl uses RGBA order, not ARGB, so we get it to
    * flip the bytes around so ARGB -> BGRA
@@ -261,6 +265,68 @@ static int convert_pixelformat(enum imv_pixelformat fmt)
   } else {
     imv_log(IMV_WARNING, "Unknown pixel format. Defaulting to ARGB\n");
     return GL_BGRA;
+  }
+}
+
+static GLint convert_upscaling_method(enum upscaling_method upscaling_method) {
+  if (upscaling_method == UPSCALING_LINEAR) {
+    return GL_LINEAR;
+  } else if (upscaling_method == UPSCALING_NEAREST_NEIGHBOUR) {
+    return GL_NEAREST;
+  } else {
+    imv_log(IMV_ERROR, "Unknown upscaling method: %d\n", upscaling_method);
+    abort();
+  }
+}
+
+static inline int min(int a, int b) { return a < b ? a : b; }
+
+static inline GLint get_gl_max_texture_size(void) {
+  GLint max_tex_size;
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+  return max_tex_size;
+}
+
+static void prepare_cache(struct imv_canvas *canvas,
+                          struct imv_bitmap *bitmap,
+                          enum upscaling_method upscaling_method)
+{
+  const GLenum format = convert_pixelformat(bitmap->format);
+  const GLint upscaling = convert_upscaling_method(upscaling_method);
+
+  const GLint max_tex_size = get_gl_max_texture_size();
+  const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
+  const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
+
+  const size_t tex_count = tex_count_w * tex_count_h;
+  if (canvas->cache.tex_count < tex_count) {
+    canvas->cache.textures = realloc(canvas->cache.textures,
+                                     tex_count * sizeof canvas->cache.textures[0]);
+    if (!canvas->cache.textures) {
+      imv_log(IMV_ERROR, "Couldn't allocate textures\n");
+      abort();
+    }
+    glGenTextures(tex_count - canvas->cache.tex_count,
+                  canvas->cache.textures + canvas->cache.tex_count);
+    canvas->cache.tex_count = tex_count;
+  }
+
+  for (int i = 0; i < tex_count_h; i++) {
+    for (int j = 0; j < tex_count_w; j++) {
+      glBindTexture(GL_TEXTURE_RECTANGLE,
+                    canvas->cache.textures[i * tex_count_w + j]);
+
+      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
+      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
+      glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
+      glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
+      glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
+      glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA8,
+                   min(bitmap->width - j * max_tex_size, max_tex_size),
+                   min(bitmap->height - i * max_tex_size, max_tex_size),
+                   0, format, GL_UNSIGNED_INT_8_8_8_8_REV, bitmap->data);
+
+    }
   }
 }
 
@@ -277,45 +343,15 @@ static void draw_bitmap(struct imv_canvas *canvas,
   glPushMatrix();
   glOrtho(0.0, viewport[2], viewport[3], 0.0, 0.0, 10.0);
 
-  if (!canvas->cache.texture) {
-    glGenTextures(1, &canvas->cache.texture);
-  }
-
-  const int format = convert_pixelformat(bitmap->format);
-
-  glBindTexture(GL_TEXTURE_RECTANGLE, canvas->cache.texture);
-
-  GLint upscaling = 0;
-  if (upscaling_method == UPSCALING_LINEAR) {
-    upscaling = GL_LINEAR;
-  } else if (upscaling_method == UPSCALING_NEAREST_NEIGHBOUR) {
-    upscaling = GL_NEAREST;
-  } else {
-    imv_log(IMV_ERROR, "Unknown upscaling method: %d\n", upscaling_method);
-    abort();
-  }
-
   if (canvas->cache.bitmap != bitmap || cache_invalidated) {
-    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
-    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
-    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA8, bitmap->width, bitmap->height,
-        0, format, GL_UNSIGNED_INT_8_8_8_8_REV, bitmap->data);
+    prepare_cache(canvas, bitmap, upscaling_method);
+    canvas->cache.bitmap = bitmap;
   }
-  canvas->cache.bitmap = bitmap;
 
   glEnable(GL_TEXTURE_RECTANGLE);
 
-  glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
-
-  const int left = bx;
-  const int top = by;
-  const int right = left + bitmap->width * scale;
-  const int bottom = top + bitmap->height * scale;
-  const int center_x = left + bitmap->width * scale / 2;
-  const int center_y = top + bitmap->height * scale / 2;
+  const int center_x = bx + bitmap->width * scale / 2;
+  const int center_y = by + bitmap->height * scale / 2;
 
   glTranslated(center_x, center_y, 0);
   if (mirrored) {
@@ -327,12 +363,31 @@ static void draw_bitmap(struct imv_canvas *canvas,
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glBegin(GL_TRIANGLE_FAN);
-  glTexCoord2i(0,             0);              glVertex2i(left, top);
-  glTexCoord2i(bitmap->width, 0);              glVertex2i(right, top);
-  glTexCoord2i(bitmap->width, bitmap->height); glVertex2i(right, bottom);
-  glTexCoord2i(0,             bitmap->height); glVertex2i(left, bottom);
-  glEnd();
+  const GLint max_tex_size = get_gl_max_texture_size();
+  const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
+  const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
+
+  for (int i = 0; i < tex_count_h; i++) {
+    for (int j = 0; j < tex_count_w; j++) {
+      glBindTexture(GL_TEXTURE_RECTANGLE,
+                    canvas->cache.textures[i * tex_count_w + j]);
+
+      const int tex_w = min(bitmap->width - j * max_tex_size, max_tex_size);
+      const int tex_h = min(bitmap->height - i * max_tex_size, max_tex_size);
+
+      const int left = bx + j * floor(max_tex_size * scale);
+      const int top = by + i * floor(max_tex_size * scale);
+      const int right = left + floor(tex_w * scale);
+      const int bottom = top + floor(tex_h * scale);
+
+      glBegin(GL_TRIANGLE_FAN);
+      glTexCoord2i(0,     0);     glVertex2i(left,  top);
+      glTexCoord2i(tex_w, 0);     glVertex2i(right, top);
+      glTexCoord2i(tex_w, tex_h); glVertex2i(right, bottom);
+      glTexCoord2i(0,     tex_h); glVertex2i(left,  bottom);
+      glEnd();
+    }
+  }
 
   glDisable(GL_BLEND);
 
