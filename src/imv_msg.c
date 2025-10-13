@@ -41,7 +41,16 @@ int main(int argc, char **argv)
   }
   buf[len-1] = '\n';
 
-  write(sockfd, buf, len);
+  char *pos = buf;
+  while (len > 0) {
+    ssize_t written = write(sockfd, pos, len);
+    if (written == -1) {
+      perror("Failed to write");
+      return 1;
+    }
+    pos += written;
+    len -= written;
+  }
   close(sockfd);
   return 0;
 }
