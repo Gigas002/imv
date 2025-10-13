@@ -14,19 +14,6 @@ int main(int argc, char **argv)
     return 0;
   }
 
-  int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-  assert(sockfd);
-
-  struct sockaddr_un desc = {
-    .sun_family = AF_UNIX
-  };
-  imv_ipc_path(desc.sun_path, sizeof desc.sun_path, atoi(argv[1]));
-
-  if (connect(sockfd, (struct sockaddr *)&desc, sizeof desc) < 0) {
-    perror("Failed to connect");
-    return 1;
-  }
-
   char buf[4096] = {0};
   int len = 0;
   for (int i = 2; i < argc; ++i) {
@@ -40,6 +27,19 @@ int main(int argc, char **argv)
     buf[len++] = ' ';
   }
   buf[len-1] = '\n';
+
+  int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+  assert(sockfd);
+
+  struct sockaddr_un desc = {
+    .sun_family = AF_UNIX
+  };
+  imv_ipc_path(desc.sun_path, sizeof desc.sun_path, atoi(argv[1]));
+
+  if (connect(sockfd, (struct sockaddr *)&desc, sizeof desc) < 0) {
+    perror("Failed to connect");
+    return 1;
+  }
 
   char *pos = buf;
   while (len > 0) {
