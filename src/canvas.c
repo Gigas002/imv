@@ -31,6 +31,7 @@ struct imv_canvas {
   int height;
   struct {
     struct imv_bitmap *bitmap;
+    enum upscaling_method upscaling_method;
     size_t tex_count;
     GLuint *textures;
   } cache;
@@ -287,12 +288,24 @@ static inline GLint get_gl_max_texture_size(void) {
   return max_tex_size;
 }
 
+static void update_upscaling_method(struct imv_canvas *canvas,
+                                    enum upscaling_method upscaling_method)
+{
+  const GLint upscaling = convert_upscaling_method(upscaling_method);
+  for (int i = 0; i < canvas->cache.tex_count; i++) {
+      glBindTexture(GL_TEXTURE_RECTANGLE, canvas->cache.textures[i]);
+
+      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
+      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
+  }
+  canvas->cache.upscaling_method = upscaling_method;
+}
+
 static void prepare_cache(struct imv_canvas *canvas,
                           struct imv_bitmap *bitmap,
                           enum upscaling_method upscaling_method)
 {
   const GLenum format = convert_pixelformat(bitmap->format);
-  const GLint upscaling = convert_upscaling_method(upscaling_method);
 
   const GLint max_tex_size = get_gl_max_texture_size();
   const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
@@ -309,6 +322,7 @@ static void prepare_cache(struct imv_canvas *canvas,
     glGenTextures(tex_count - canvas->cache.tex_count,
                   canvas->cache.textures + canvas->cache.tex_count);
     canvas->cache.tex_count = tex_count;
+    update_upscaling_method(canvas, upscaling_method);
   }
 
   for (int i = 0; i < tex_count_h; i++) {
@@ -316,8 +330,6 @@ static void prepare_cache(struct imv_canvas *canvas,
       glBindTexture(GL_TEXTURE_RECTANGLE,
                     canvas->cache.textures[i * tex_count_w + j]);
 
-      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
-      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
       glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
       glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
       glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
@@ -334,8 +346,7 @@ static void draw_bitmap(struct imv_canvas *canvas,
                         struct imv_bitmap *bitmap,
                         int bx, int by, double scale,
                         double rotation, bool mirrored,
-                        enum upscaling_method upscaling_method,
-                        bool cache_invalidated)
+                        enum upscaling_method upscaling_method)
 {
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
@@ -343,9 +354,12 @@ static void draw_bitmap(struct imv_canvas *canvas,
   glPushMatrix();
   glOrtho(0.0, viewport[2], viewport[3], 0.0, 0.0, 10.0);
 
-  if (canvas->cache.bitmap != bitmap || cache_invalidated) {
+  if (canvas->cache.bitmap != bitmap) {
     prepare_cache(canvas, bitmap, upscaling_method);
     canvas->cache.bitmap = bitmap;
+  }
+  if (canvas->cache.upscaling_method != upscaling_method) {
+    update_upscaling_method(canvas, upscaling_method);
   }
 
   glEnable(GL_TEXTURE_RECTANGLE);
@@ -399,13 +413,12 @@ static void draw_bitmap(struct imv_canvas *canvas,
 void imv_canvas_draw_image(struct imv_canvas *canvas, struct imv_image *image,
                            int x, int y, double scale,
                            double rotation, bool mirrored,
-                           enum upscaling_method upscaling_method,
-                           bool cache_invalidated)
+                           enum upscaling_method upscaling_method)
 {
   switch (imv_image_get_type(image)) {
     case IMV_IMAGE_BITMAP:
       draw_bitmap(canvas, imv_image_get_bitmap(image), x, y, scale, rotation,
-                  mirrored, upscaling_method, cache_invalidated);
+                  mirrored, upscaling_method);
       break;
 #ifdef IMV_BACKEND_LIBRSVG
     case IMV_IMAGE_SVG:

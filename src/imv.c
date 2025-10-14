@@ -117,7 +117,6 @@ struct imv {
   /* dirty state flags */
   bool need_redraw;
   bool need_rescale;
-  bool cache_invalidated;
 
   /* traverse sub-directories for more images */
   bool recursive_load;
@@ -1403,7 +1402,7 @@ static void render_window(struct imv *imv)
     }
     imv_canvas_draw_image(imv->canvas, imv->current_image,
                           x, y, scale, rotation, mirrored,
-                          imv->upscaling_method, imv->cache_invalidated);
+                          imv->upscaling_method);
   }
 
   imv_canvas_clear(imv->canvas);
@@ -1469,7 +1468,6 @@ static void render_window(struct imv *imv)
 
   /* redraw complete, unset the flag */
   imv->need_redraw = false;
-  imv->cache_invalidated = false;
 }
 
 static char *get_config_path(void)
@@ -1956,7 +1954,6 @@ static void command_set_upscaling_method(struct list *args, const char *argstr, 
   }
 
   imv->need_redraw = true;
-  imv->cache_invalidated = true;
 }
 
 static void command_set_slideshow_duration(struct list *args, const char *argstr, void *data)
