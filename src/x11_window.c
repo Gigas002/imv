@@ -93,6 +93,16 @@ static void setup_keymap(struct imv_window *window)
   xcb_disconnect(conn);
 }
 
+extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+
+static void load_gl_functions(void) {
+  if (atoi((const char*)glGetString(GL_VERSION)) >= 3) {
+    imv_glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)glXGetProcAddressARB(
+      (const GLubyte *)"glGenerateMipmap"
+    );
+  }
+}
+
 struct imv_window *imv_window_create(int w, int h, const char *title)
 {
   /* Ensure event writes will always be atomic */
@@ -152,6 +162,7 @@ struct imv_window *imv_window_create(int w, int h, const char *title)
   window->x_glc = glXCreateContext(window->x_display, vi, NULL, GL_TRUE);
   assert(window->x_glc);
   glXMakeCurrent(window->x_display, window->x_window, window->x_glc);
+  load_gl_functions();
 
   window->keyboard = imv_keyboard_create();
   assert(window->keyboard);

@@ -11,6 +11,7 @@ BREAKING CHANGES:
 * Fix linking errors with icu > 75
 * Fix displaying HEIF images with odd width
 * Fix displaying images with dimensions larger than maximum OpenGL texture size
+* Use linear mipmaps to downscale images when OpenGL 3 is available
 
 v4.5.0 - 2024-02-20
 -------------------

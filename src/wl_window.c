@@ -782,6 +782,14 @@ static void on_timer(union sigval sigval)
   push_keypress(window, window->repeat_scancode);
 }
 
+extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+
+static void load_gl_functions(void) {
+  if (atoi((const char*)glGetString(GL_VERSION)) >= 3) {
+    imv_glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)eglGetProcAddress("glGenerateMipmap");
+  }
+}
+
 struct imv_window *imv_window_create(int width, int height, const char *title)
 {
   /* Ensure event writes will always be atomic */
@@ -797,6 +805,7 @@ struct imv_window *imv_window_create(int width, int height, const char *title)
     return NULL;
   }
   create_window(window, width, height, title);
+  load_gl_functions();
 
   struct sigevent timer_handler = {
     .sigev_notify = SIGEV_THREAD,

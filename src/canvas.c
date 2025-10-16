@@ -22,6 +22,8 @@
 unsigned char checkers_data[] = { REPEAT8(REPEAT8(0xCC, 0xCC, 0xCC, 0xFF), REPEAT8(0x80, 0x80, 0x80, 0xFF)),
                                   REPEAT8(REPEAT8(0x80, 0x80, 0x80, 0xFF), REPEAT8(0xCC, 0xCC, 0xCC, 0xFF)) };
 
+PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap = NULL;
+
 struct imv_canvas {
   cairo_surface_t *surface;
   cairo_t *cairo;
@@ -293,10 +295,13 @@ static void update_upscaling_method(struct imv_canvas *canvas,
 {
   const GLint upscaling = convert_upscaling_method(upscaling_method);
   for (int i = 0; i < canvas->cache.tex_count; i++) {
-      glBindTexture(GL_TEXTURE_RECTANGLE, canvas->cache.textures[i]);
+      glBindTexture(GL_TEXTURE_2D, canvas->cache.textures[i]);
 
-      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
-      glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                      upscaling_method == UPSCALING_LINEAR && imv_glGenerateMipmap
+                        ? GL_LINEAR_MIPMAP_LINEAR
+                        : upscaling);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, upscaling);
   }
   canvas->cache.upscaling_method = upscaling_method;
 }
@@ -327,17 +332,19 @@ static void prepare_cache(struct imv_canvas *canvas,
 
   for (int i = 0; i < tex_count_h; i++) {
     for (int j = 0; j < tex_count_w; j++) {
-      glBindTexture(GL_TEXTURE_RECTANGLE,
+      glBindTexture(GL_TEXTURE_2D,
                     canvas->cache.textures[i * tex_count_w + j]);
 
       glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
       glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
       glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
-      glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA8,
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
                    min(bitmap->width - j * max_tex_size, max_tex_size),
                    min(bitmap->height - i * max_tex_size, max_tex_size),
                    0, format, GL_UNSIGNED_INT_8_8_8_8_REV, bitmap->data);
-
+      if (imv_glGenerateMipmap) {
+        imv_glGenerateMipmap(GL_TEXTURE_2D);
+      }
     }
   }
 }
@@ -362,7 +369,7 @@ static void draw_bitmap(struct imv_canvas *canvas,
     update_upscaling_method(canvas, upscaling_method);
   }
 
-  glEnable(GL_TEXTURE_RECTANGLE);
+  glEnable(GL_TEXTURE_2D);
 
   const int center_x = bx + bitmap->width * scale / 2;
   const int center_y = by + bitmap->height * scale / 2;
@@ -383,8 +390,7 @@ static void draw_bitmap(struct imv_canvas *canvas,
 
   for (int i = 0; i < tex_count_h; i++) {
     for (int j = 0; j < tex_count_w; j++) {
-      glBindTexture(GL_TEXTURE_RECTANGLE,
-                    canvas->cache.textures[i * tex_count_w + j]);
+      glBindTexture(GL_TEXTURE_2D, canvas->cache.textures[i * tex_count_w + j]);
 
       const int tex_w = min(bitmap->width - j * max_tex_size, max_tex_size);
       const int tex_h = min(bitmap->height - i * max_tex_size, max_tex_size);
@@ -395,18 +401,18 @@ static void draw_bitmap(struct imv_canvas *canvas,
       const int bottom = top + floor(tex_h * scale);
 
       glBegin(GL_TRIANGLE_FAN);
-      glTexCoord2i(0,     0);     glVertex2i(left,  top);
-      glTexCoord2i(tex_w, 0);     glVertex2i(right, top);
-      glTexCoord2i(tex_w, tex_h); glVertex2i(right, bottom);
-      glTexCoord2i(0,     tex_h); glVertex2i(left,  bottom);
+      glTexCoord2i(0, 0); glVertex2i(left,  top);
+      glTexCoord2i(1, 0); glVertex2i(right, top);
+      glTexCoord2i(1, 1); glVertex2i(right, bottom);
+      glTexCoord2i(0, 1); glVertex2i(left,  bottom);
       glEnd();
     }
   }
 
   glDisable(GL_BLEND);
 
-  glBindTexture(GL_TEXTURE_RECTANGLE, 0);
-  glDisable(GL_TEXTURE_RECTANGLE);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_TEXTURE_2D);
   glPopMatrix();
 }
 
