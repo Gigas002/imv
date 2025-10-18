@@ -768,6 +768,10 @@ static void shutdown_wayland(struct imv_window *window)
   if (window->wl_compositor) {
     wl_compositor_destroy(window->wl_compositor);
   }
+  for (size_t i = 0; i < window->wl_outputs->len; ++i) {
+    struct output_data *data = window->wl_outputs->items[i];
+    wl_output_destroy(data->wl_output);
+  }
   if (window->wl_registry) {
     wl_registry_destroy(window->wl_registry);
   }
