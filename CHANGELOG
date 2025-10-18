@@ -12,6 +12,7 @@ BREAKING CHANGES:
 * Fix displaying HEIF images with odd width
 * Fix displaying images with dimensions larger than maximum OpenGL texture size
 * Use linear mipmaps to downscale images when OpenGL 3 is available
+* Fix scaling of SVG images on HiDPI monitors
 
 v4.5.0 - 2024-02-20
 -------------------

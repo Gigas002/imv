@@ -21,8 +21,8 @@ enum imv_zoom_source {
 };
 
 /* Creates an instance of imv_viewport */
-struct imv_viewport *imv_viewport_create(int window_width, int window_height,
-                                         int buffer_width, int buffer_height);
+struct imv_viewport *imv_viewport_create(int buffer_width, int buffer_height,
+                                         double ui_scale);
 
 /* Cleans up an imv_viewport instance */
 void imv_viewport_free(struct imv_viewport *view);
@@ -101,8 +101,8 @@ void imv_viewport_set_redraw(struct imv_viewport *view);
 
 /* Tell the viewport the window or image has changed */
 void imv_viewport_update(struct imv_viewport *view,
-                         int window_width, int window_height,
                          int buffer_width, int buffer_height,
+                         double ui_scale,
                          struct imv_image *image, enum scaling_mode);
 
 /* Poll whether we need to redraw */

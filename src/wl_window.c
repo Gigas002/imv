@@ -505,7 +505,7 @@ static void on_global(void *data, struct wl_registry *registry, uint32_t id,
 
   if (!strcmp(interface, "wl_compositor")) {
     version = imv_min(version, 4);
-    window->wl_compositor = 
+    window->wl_compositor =
       wl_registry_bind(registry, id, &wl_compositor_interface, version);
   } else if (!strcmp(interface, "xdg_wm_base")) {
     version = imv_min(version, 2);
@@ -856,6 +856,10 @@ void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
   if (h) {
     *h = window->height * window->scale;
   }
+}
+
+int imv_window_get_scale(struct imv_window *window) {
+  return window->scale;
 }
 
 void imv_window_set_title(struct imv_window *window, const char *title)

@@ -443,13 +443,12 @@ static void event_handler(void *data, const struct imv_event *e)
       break;
     case IMV_EVENT_RESIZE:
       {
-        const int ww = e->data.resize.width;
-        const int wh = e->data.resize.height;
-        const int bw = e->data.resize.buffer_width;
-        const int bh = e->data.resize.buffer_height;
-        const double scale = e->data.resize.scale;
-        imv_viewport_update(imv->view, ww, wh, bw, bh, imv->current_image, imv->scaling_mode);
-        imv_canvas_resize(imv->canvas, bw, bh, scale);
+        const int w = e->data.resize.buffer_width;
+        const int h = e->data.resize.buffer_height;
+        const double ui_scale = e->data.resize.scale;
+        imv_viewport_update(imv->view, w, h, ui_scale, imv->current_image, imv->scaling_mode);
+        imv_canvas_resize(imv->canvas, w, h);
+        imv_canvas_font(imv->canvas, imv->overlay.font.name, imv->overlay.font.size * ui_scale);
         break;
       }
     case IMV_EVENT_KEYBOARD:
@@ -1268,10 +1267,9 @@ static bool setup_window(struct imv *imv)
   }
 
   {
-    int ww, wh, bw, bh;
-    imv_window_get_size(imv->window, &ww, &wh);
-    imv_window_get_framebuffer_size(imv->window, &bw, &bh);
-    imv->view = imv_viewport_create(ww, wh, bw, bh);
+    int w, h;
+    imv_window_get_framebuffer_size(imv->window, &w, &h);
+    imv->view = imv_viewport_create(w, h, 1);
   }
 
   if (imv->custom_start_pan) {
@@ -1282,9 +1280,9 @@ static bool setup_window(struct imv *imv)
   imv_window_set_fullscreen(imv->window, imv->start_fullscreen);
 
   {
-    int ww, wh;
-    imv_window_get_size(imv->window, &ww, &wh);
-    imv->canvas = imv_canvas_create(ww, wh);
+    int w, h;
+    imv_window_get_framebuffer_size(imv->window, &w, &h);
+    imv->canvas = imv_canvas_create(w, h);
     imv_canvas_font(imv->canvas, imv->overlay.font.name, imv->overlay.font.size);
   }
 
@@ -1367,9 +1365,6 @@ static void consume_internal_event(struct imv *imv, struct internal_event *event
 
 static void render_window(struct imv *imv)
 {
-  int ww, wh;
-  imv_window_get_size(imv->window, &ww, &wh);
-
   /* update window title */
   char title_text[1024];
   generate_env_text(imv, title_text, sizeof title_text, imv->title_text);
@@ -1407,6 +1402,10 @@ static void render_window(struct imv *imv)
 
   imv_canvas_clear(imv->canvas);
 
+  int w, h;
+  imv_window_get_framebuffer_size(imv->window, &w, &h);
+  int ui_scale = imv_window_get_scale(imv->window);
+
   /* if the overlay needs to be drawn, draw that too */
   if (imv->overlay.enabled) {
     char overlay_text[1024];
@@ -1417,10 +1416,10 @@ static void render_window(struct imv *imv)
     pango_layout_get_pixel_size(layout, &width, &height);
 
     int y = 0;
-    const int bottom_offset = 5;
+    const int bottom_offset = 5 * ui_scale;
     if (imv->overlay.position_at_bottom)
     {
-      y = wh - height - bottom_offset;
+      y = h - height - bottom_offset;
     }
 
     imv_canvas_color(imv->canvas,
@@ -1442,25 +1441,25 @@ static void render_window(struct imv *imv)
 
   /* draw command entry bar if needed */
   if (imv_console_prompt(imv->console)) {
-    const int bottom_offset = 5;
-    const int height = imv->overlay.font.size * 1.2;
+    const int bottom_offset = 5 * ui_scale;
+    const int height = imv->overlay.font.size * ui_scale * 1.2;
     imv_canvas_color(imv->canvas, 0, 0, 0, 0.75);
-    imv_canvas_fill_rectangle(imv->canvas, 0, wh - height - bottom_offset,
-        ww, height + bottom_offset);
+    imv_canvas_fill_rectangle(imv->canvas, 0, h - height - bottom_offset,
+        w, height + bottom_offset);
     imv_canvas_color(imv->canvas, 1, 1, 1, 1);
 
     int x = 0;
     /* draw pre-cursor text */
-    x += imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset,
+    x += imv_canvas_printf(imv->canvas, x, h - height - bottom_offset,
         ":%.*s",
         imv_console_prompt_cursor(imv->console),
         imv_console_prompt(imv->console));
     /* draw the cursor */
     imv_canvas_color(imv->canvas, 1, 1, 1, 0.5);
-    imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset, "\u2588");
+    imv_canvas_printf(imv->canvas, x, h - height - bottom_offset, "\u2588");
     /* any any remaining text on top of the cursor */
     imv_canvas_color(imv->canvas, 1, 1, 1, 1);
-    imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset, "%s",
+    imv_canvas_printf(imv->canvas, x, h - height - bottom_offset, "%s",
         imv_console_prompt(imv->console) + imv_console_prompt_cursor(imv->console));
   }
 

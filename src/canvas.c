@@ -97,7 +97,7 @@ void imv_canvas_free(struct imv_canvas *canvas)
   free(canvas);
 }
 
-void imv_canvas_resize(struct imv_canvas *canvas, int width, int height, double scale)
+void imv_canvas_resize(struct imv_canvas *canvas, int width, int height)
 {
   cairo_destroy(canvas->cairo);
   cairo_surface_destroy(canvas->surface);
@@ -108,7 +108,6 @@ void imv_canvas_resize(struct imv_canvas *canvas, int width, int height, double 
   canvas->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
                                                canvas->width, canvas->height);
   assert(canvas->surface);
-  cairo_surface_set_device_scale(canvas->surface, scale, scale);
   canvas->cairo = cairo_create(canvas->surface);
   assert(canvas->cairo);
 }

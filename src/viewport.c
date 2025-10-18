@@ -8,9 +8,7 @@ struct imv_viewport {
   double scale;
   double rotation;
   bool mirrored;
-  struct {
-    int width, height;
-  } window; /* window dimensions */
+  double ui_scale;
   struct {
     int width, height;
   } buffer; /* rendering buffer dimensions */
@@ -23,16 +21,15 @@ struct imv_viewport {
 
 static void input_xy_to_render_xy(struct imv_viewport *view, int *x, int *y)
 {
-  *x *= view->buffer.width / view->window.width;
-  *y *= view->buffer.height / view->window.height;
+  *x *= view->ui_scale;
+  *y *= view->ui_scale;
 }
 
-struct imv_viewport *imv_viewport_create(int window_width, int window_height,
-                                         int buffer_width, int buffer_height)
+struct imv_viewport *imv_viewport_create(int buffer_width, int buffer_height,
+                                         double ui_scale)
 {
   struct imv_viewport *view = malloc(sizeof *view);
-  view->window.width = window_width;
-  view->window.height = window_height;
+  view->ui_scale = ui_scale;
   view->buffer.width = buffer_width;
   view->buffer.height = buffer_height;
   view->scale = 1;
@@ -302,13 +299,12 @@ void imv_viewport_rescale(struct imv_viewport *view, const struct imv_image *ima
 }
 
 void imv_viewport_update(struct imv_viewport *view,
-                         int window_width, int window_height,
                          int buffer_width, int buffer_height,
+                         double ui_scale,
                          struct imv_image *image,
                          enum scaling_mode scaling_mode)
 {
-  view->window.width = window_width;
-  view->window.height = window_height;
+  view->ui_scale = ui_scale;
   view->buffer.width = buffer_width;
   view->buffer.height = buffer_height;
 

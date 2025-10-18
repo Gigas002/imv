@@ -194,7 +194,7 @@ void imv_window_clear(struct imv_window *window, unsigned char r,
   glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void imv_window_get_size(struct imv_window *window, int *w, int *h)
+void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
 {
   if (w) {
     *w = window->width;
@@ -204,14 +204,9 @@ void imv_window_get_size(struct imv_window *window, int *w, int *h)
   }
 }
 
-void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
-{
-  if (w) {
-    *w = window->width;
-  }
-  if (h) {
-    *h = window->height;
-  }
+int imv_window_get_scale(struct imv_window *window) {
+  (void)window;
+  return 1;
 }
 
 void imv_window_set_title(struct imv_window *window, const char *title)
