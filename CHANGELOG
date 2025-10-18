@@ -13,6 +13,7 @@ BREAKING CHANGES:
 * Fix displaying images with dimensions larger than maximum OpenGL texture size
 * Use linear mipmaps to downscale images when OpenGL 3 is available
 * Fix scaling of SVG images on HiDPI monitors
+* Try to display broken JPEG images when the corruption is not fatal
 
 v4.5.0 - 2024-02-20
 -------------------

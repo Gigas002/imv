@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "bitmap.h"
+#include "log.h"
 #include "image.h"
 #include "source.h"
 #include "source_private.h"
@@ -50,8 +51,16 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
       bitmap, private->width, 0, private->height, TJPF_RGBA, TJFLAG_FASTDCT);
 
   if (rcode) {
-    free(bitmap);
-    return;
+    int err = tjGetErrorCode(private->jpeg);
+    if (err == TJERR_WARNING) {
+      imv_log(IMV_WARNING, "Non fatal error while decompressing image: %s\n",
+              tjGetErrorStr2(private->jpeg));
+    } else {
+      imv_log(IMV_ERROR, "Fatal error while decompressing image: %s\n",
+              tjGetErrorStr2(private->jpeg), tjGetErrorCode(private->jpeg), TJERR_WARNING);
+      free(bitmap);
+      return;
+    }
   }
 
   struct imv_bitmap *bmp = malloc(sizeof *bmp);
