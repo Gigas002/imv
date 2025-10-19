@@ -1799,26 +1799,26 @@ static void command_flip(struct list *args, const char *argstr, void *data)
 
 static void command_open(struct list *args, const char *argstr, void *data)
 {
-  (void)argstr;
+  (void)args;
+  while(*argstr == ' ') {
+    argstr++;
+  }
   struct imv *imv = data;
   bool recursive = imv->recursive_load;
 
   update_env_vars(imv);
-  for (size_t i = 1; i < args->len; ++i) {
+  /* allow -r arg to specify recursive */
+  if (memcmp(argstr, "-r", 2) == 0) {
+    argstr += 2;
+    recursive = true;
+  }
 
-    /* allow -r arg to specify recursive */
-    if (i == 1 && !strcmp(args->items[i], "-r")) {
-      recursive = true;
-      continue;
+  wordexp_t word;
+  if (wordexp(argstr, &word, 0) == 0) {
+    for (size_t i = 0; i < word.we_wordc; ++i) {
+      imv_navigator_add(imv->navigator, word.we_wordv[i], recursive);
     }
-
-    wordexp_t word;
-    if (wordexp(args->items[i], &word, 0) == 0) {
-      for (size_t j = 0; j < word.we_wordc; ++j) {
-        imv_navigator_add(imv->navigator, word.we_wordv[j], recursive);
-      }
-      wordfree(&word);
-    }
+    wordfree(&word);
   }
 }
 
