@@ -3,7 +3,7 @@ project(
   ['c'],
   version: '4.5.0',
   license: 'MIT',
-  meson_version: '>= 0.47',
+  meson_version: '>= 0.49',
   default_options: ['buildtype=debugoptimized', 'c_std=c99'],
 )
 
@@ -118,18 +118,20 @@ endif
 files_msg = files('src/imv_msg.c', 'src/ipc_common.c')
 
 enabled_backends = []
+supported_mime_types = []
 foreach backend : [
-  ['libtiff', 'dependency', 'libtiff-4', []],
-  ['libpng', 'dependency', 'libpng', []],
-  ['libjpeg', 'dependency', 'libturbojpeg', []],
-  ['librsvg', 'dependency', 'librsvg-2.0', '>= 2.44'],
-  ['libnsgif', 'dependency', 'libnsgif', '1.0.0'],
-  ['libheif', 'dependency', 'libheif', []],
-  ['libjxl', 'dependency', 'libjxl', []],
+  ['libtiff', 'dependency', 'libtiff-4', [], ['image/tiff', 'image/tiff-fx']],
+  ['libpng', 'dependency', 'libpng', [], ['image/png', 'image/x-png']],
+  ['libjpeg', 'dependency', 'libturbojpeg', [], ['image/jpeg', 'image/jpg', 'image/pjpeg']],
+  ['librsvg', 'dependency', 'librsvg-2.0', '>= 2.44', ['image/svg+xml']],
+  ['libnsgif', 'dependency', 'libnsgif', '1.0.0', ['image/gif']],
+  ['libheif', 'dependency', 'libheif', [], ['image/heif', 'image/avif']],
+  ['libjxl', 'dependency', 'libjxl', [], ['image/jxl']],
 ]
   _backend_name = backend[0]
   _dep_type = backend[1]
   _dep_name = backend[2]
+  _mime_types = backend[4]
 
   if _dep_type == 'dependency'
     _dep = dependency(_dep_name, required: get_option(_backend_name), version: backend[3])
@@ -144,6 +146,7 @@ foreach backend : [
     files_imv += files('src/backend_@0@.c'.format(_backend_name))
     add_project_arguments('-DIMV_BACKEND_@0@'.format(_backend_name.to_upper()), language: 'c')
     enabled_backends += _backend_name
+    supported_mime_types += _mime_types
   endif
 endforeach
 
@@ -192,10 +195,14 @@ if get_option('contrib-commands')
   ]
 endif
 foreach desktop: desktop_list
-  install_data(
-    files('files/@0@.desktop'.format(desktop)),
+  configure_file(
+    input: 'files/@0@.desktop.in'.format(desktop),
+    output: '@0@.desktop'.format(desktop),
     install_dir: '@0@/applications'.format(get_option('datadir')),
     install_mode: 'rw-r--r--',
+    configuration: {
+      'supported_mime_types': ';'.join(supported_mime_types)
+    }
   )
 endforeach
 
