@@ -58,7 +58,8 @@ static nsgif_bitmap_cb_vt bitmap_callbacks = {
   bitmap_get_buffer,
   bitmap_set_opaque,
   bitmap_test_opaque,
-  bitmap_mark_modified
+  bitmap_mark_modified,
+  .get_rowspan = NULL,
 };
 
 

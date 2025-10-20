@@ -208,6 +208,7 @@ static enum backend_result open_memory(void *data, size_t sz, struct imv_source 
   switch (JxlSignatureCheck(data, sz)) {
     case JXL_SIG_NOT_ENOUGH_BYTES:
       imv_log(IMV_DEBUG, "libjxl: not enough bytes to read\n");
+      // fallthrough
     case JXL_SIG_INVALID:
       imv_log(IMV_DEBUG, "libjxl: valid jxl signature not found\n");
       return BACKEND_UNSUPPORTED;
@@ -251,6 +252,7 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
   switch (JxlSignatureCheck(pvt->data, pvt->data_len)) {
     case JXL_SIG_NOT_ENOUGH_BYTES:
       imv_log(IMV_DEBUG, "libjxl: not enough bytes to read\n");
+      // fallthrough
     case JXL_SIG_INVALID:
       imv_log(IMV_DEBUG, "libjxl: valid jxl signature not found\n");
       munmap(pvt->data, pvt->data_len);

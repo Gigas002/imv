@@ -3,6 +3,7 @@ packages:
   - devel/icu
   - devel/meson
   - devel/pkgconf
+  - devel/inih
   - graphics/libglvnd
   - graphics/libheif
   - graphics/libjpeg-turbo
@@ -19,6 +20,8 @@ packages:
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
+  # FreeBSD's libheif is outdated and contains functions without prototypes in
+  # its headers
   - meson: |
-      meson setup imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib'
+      meson setup imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib' -Dwerror=true -Dc_args='-Wno-strict-prototypes'
       ninja -C build test

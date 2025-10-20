@@ -4,7 +4,7 @@ project(
   version: '4.5.0',
   license: 'MIT',
   meson_version: '>= 0.49',
-  default_options: ['buildtype=debugoptimized', 'c_std=c99'],
+  default_options: ['c_std=c99', 'warning_level=3'],
 )
 
 version = '@0@'.format(meson.project_version())

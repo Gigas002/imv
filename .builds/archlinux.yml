@@ -24,8 +24,8 @@ sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
   - gcc: |
-      CC=gcc meson setup imv build_gcc -D auto_features=enabled
+      CC=gcc meson setup imv build_gcc -D auto_features=enabled -Dwerror=true
       CC=gcc ninja -C build_gcc test
   - clang: |
-      CC=clang meson setup imv build_clang -D auto_features=enabled
+      CC=clang meson setup imv build_clang -D auto_features=enabled -Dwerror=true
       CC=clang ninja -C build_clang test

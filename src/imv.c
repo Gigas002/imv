@@ -26,6 +26,7 @@
 #include "log.h"
 #include "navigator.h"
 #include "source.h"
+#include "sys/types.h"
 #include "viewport.h"
 #include "window.h"
 
@@ -1002,7 +1003,7 @@ int imv_run(struct imv *imv)
     if (imv->paths_from_stdin) {
       int max_tries = 1000;
       bool is_number = true;
-      for(int i=0; i<strlen(imv->starting_path); ++i) {
+      for(size_t i = 0; i < strlen(imv->starting_path); ++i) {
         if (!isdigit(imv->starting_path[i])) {
           is_number = false;
           break;
@@ -1025,7 +1026,7 @@ int imv_run(struct imv *imv)
             cont = false;
           }
         } else {
-          if(imv_navigator_length(imv->navigator) >= index) {
+          if((ssize_t)imv_navigator_length(imv->navigator) >= index) {
             imv_navigator_select_abs(imv->navigator, index);
             cont = false;
           }

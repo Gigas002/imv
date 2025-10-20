@@ -13,7 +13,7 @@ struct imv_image {
     #ifdef IMV_BACKEND_LIBRSVG
     RsvgHandle *svg;
     #endif
-  };
+  } val;
 };
 
 enum image_type imv_image_get_type(struct imv_image *image) {
@@ -25,7 +25,7 @@ struct imv_image *imv_image_create_from_bitmap(struct imv_bitmap *bmp)
 {
   struct imv_image *image = calloc(1, sizeof *image);
   image->type = IMV_IMAGE_BITMAP;
-  image->bitmap = bmp;
+  image->val.bitmap = bmp;
   return image;
 }
 
@@ -34,7 +34,7 @@ struct imv_image *imv_image_create_from_svg(RsvgHandle *handle)
 {
   struct imv_image *image = calloc(1, sizeof *image);
   image->type = IMV_IMAGE_SVG;
-  image->svg = handle;
+  image->val.svg = handle;
   return image;
 }
 #endif
@@ -47,11 +47,11 @@ void imv_image_free(struct imv_image *image)
 
   switch (image->type) {
     case IMV_IMAGE_BITMAP:
-      imv_bitmap_free(image->bitmap);
+      imv_bitmap_free(image->val.bitmap);
       break;
 #ifdef IMV_BACKEND_LIBRSVG
     case IMV_IMAGE_SVG: {
-      g_object_unref(image->svg);
+      g_object_unref(image->val.svg);
       break;
     }
 #endif
@@ -67,11 +67,11 @@ int imv_image_width(const struct imv_image *image)
   }
   switch (image->type) {
     case IMV_IMAGE_BITMAP:
-      return image->bitmap->width;
+      return image->val.bitmap->width;
 #ifdef IMV_BACKEND_LIBRSVG
     case IMV_IMAGE_SVG: {
       RsvgDimensionData dims;
-      rsvg_handle_get_dimensions(image->svg, &dims);
+      rsvg_handle_get_dimensions(image->val.svg, &dims);
       return dims.width;
     }
 #endif
@@ -86,11 +86,11 @@ int imv_image_height(const struct imv_image *image)
   }
   switch (image->type) {
     case IMV_IMAGE_BITMAP:
-      return image->bitmap->height;
+      return image->val.bitmap->height;
 #ifdef IMV_BACKEND_LIBRSVG
     case IMV_IMAGE_SVG: {
       RsvgDimensionData dims;
-      rsvg_handle_get_dimensions(image->svg, &dims);
+      rsvg_handle_get_dimensions(image->val.svg, &dims);
       return dims.height;
     }
 #endif
@@ -101,13 +101,13 @@ int imv_image_height(const struct imv_image *image)
 /* Non-public functions, only used by imv_canvas */
 struct imv_bitmap *imv_image_get_bitmap(const struct imv_image *image)
 {
-  return image->type == IMV_IMAGE_BITMAP ? image->bitmap : NULL;
+  return image->type == IMV_IMAGE_BITMAP ? image->val.bitmap : NULL;
 }
 
 #ifdef IMV_BACKEND_LIBRSVG
 RsvgHandle *imv_image_get_svg(const struct imv_image *image)
 {
-  return image->type == IMV_IMAGE_SVG ? image->svg : NULL;
+  return image->type == IMV_IMAGE_SVG ? image->val.svg : NULL;
 }
 #endif
 

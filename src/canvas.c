@@ -293,7 +293,7 @@ static void update_upscaling_method(struct imv_canvas *canvas,
                                     enum upscaling_method upscaling_method)
 {
   const GLint upscaling = convert_upscaling_method(upscaling_method);
-  for (int i = 0; i < canvas->cache.tex_count; i++) {
+  for (size_t i = 0; i < canvas->cache.tex_count; i++) {
       glBindTexture(GL_TEXTURE_2D, canvas->cache.textures[i]);
 
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
