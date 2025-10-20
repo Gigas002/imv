@@ -446,7 +446,7 @@ static void event_handler(void *data, const struct imv_event *e)
         const int w = e->data.resize.buffer_width;
         const int h = e->data.resize.buffer_height;
         const double ui_scale = e->data.resize.scale;
-        imv_viewport_update(imv->view, w, h, ui_scale, imv->current_image, imv->scaling_mode);
+        imv_viewport_update(imv->view, w, h, imv->current_image, imv->scaling_mode);
         imv_canvas_resize(imv->canvas, w, h);
         imv_canvas_font(imv->canvas, imv->overlay.font.name, imv->overlay.font.size * ui_scale);
         break;
@@ -1269,7 +1269,7 @@ static bool setup_window(struct imv *imv)
   {
     int w, h;
     imv_window_get_framebuffer_size(imv->window, &w, &h);
-    imv->view = imv_viewport_create(w, h, 1);
+    imv->view = imv_viewport_create(w, h);
   }
 
   if (imv->custom_start_pan) {

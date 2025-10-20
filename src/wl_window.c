@@ -317,17 +317,17 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
 
   struct imv_window *window = data;
 
-  int dx = wl_fixed_to_int(window->pointer.change.dx);
-  int dy = wl_fixed_to_int(window->pointer.change.dy);
-  window->pointer.change.dx -= wl_fixed_from_int(dx);
-  window->pointer.change.dy -= wl_fixed_from_int(dy);
+  int dx = wl_fixed_to_int(window->scale * window->pointer.change.dx);
+  int dy = wl_fixed_to_int(window->scale * window->pointer.change.dy);
+  window->pointer.change.dx -= wl_fixed_from_int(dx) / window->scale;
+  window->pointer.change.dy -= wl_fixed_from_int(dy) / window->scale;
   if (dx || dy) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_MOTION,
       .data = {
         .mouse_motion = {
-          .x = wl_fixed_to_double(window->pointer.current.x),
-          .y = wl_fixed_to_double(window->pointer.current.y),
+          .x = wl_fixed_to_double(window->scale * window->pointer.current.x),
+          .y = wl_fixed_to_double(window->scale * window->pointer.current.y),
           .dx = dx,
           .dy = dy,
         }
@@ -888,10 +888,10 @@ bool imv_window_get_mouse_button(struct imv_window *window, int button)
 void imv_window_get_mouse_position(struct imv_window *window, double *x, double *y)
 {
   if (x) {
-    *x = wl_fixed_to_double(window->pointer.current.x);
+    *x = wl_fixed_to_double(window->scale * window->pointer.current.x);
   }
   if (y) {
-    *y = wl_fixed_to_double(window->pointer.current.y);
+    *y = wl_fixed_to_double(window->scale * window->pointer.current.y);
   }
 }
 
