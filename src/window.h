@@ -33,7 +33,7 @@ struct imv_event {
       char *text;
     } keyboard;
     struct {
-      double x, y, dx, dy;
+      int x, y, dx, dy;
     } mouse_motion;
     struct {
       int button;

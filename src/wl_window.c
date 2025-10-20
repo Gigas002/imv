@@ -56,21 +56,15 @@ struct imv_window {
 
   struct {
     struct {
-      double last;
-      double current;
-    } x;
+      wl_fixed_t x, y;
+      bool mouse1;
+    } current;
+
     struct {
-      double last;
-      double current;
-    } y;
-    struct {
-      bool last;
-      bool current;
-    } mouse1;
-    struct {
-      double dx;
-      double dy;
-    } scroll;
+      wl_fixed_t dx, dy;
+      wl_fixed_t scroll_dx, scroll_dy;
+      bool dmouse1;
+    } change;
   } pointer;
 };
 
@@ -260,10 +254,10 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
   (void)surface;
 
   struct imv_window *window = data;
-  window->pointer.x.last = wl_fixed_to_double(surface_x);
-  window->pointer.y.last = wl_fixed_to_double(surface_y);
-  window->pointer.x.current = wl_fixed_to_double(surface_x);
-  window->pointer.y.current = wl_fixed_to_double(surface_y);
+  window->pointer.current.x = surface_x;
+  window->pointer.current.y = surface_y;
+  window->pointer.change.dx = 0;
+  window->pointer.change.dy = 0;
 }
 
 static void pointer_leave(void *data, struct wl_pointer *pointer,
@@ -282,8 +276,10 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
   (void)time;
 
   struct imv_window *window = data;
-  window->pointer.x.current = wl_fixed_to_double(surface_x);
-  window->pointer.y.current = wl_fixed_to_double(surface_y);
+  window->pointer.change.dx += surface_x - window->pointer.current.x;
+  window->pointer.change.dy += surface_y - window->pointer.current.y;
+  window->pointer.current.x = surface_x;
+  window->pointer.current.y = surface_y;
 }
 
 static void pointer_button(void *data, struct wl_pointer *pointer,
@@ -296,7 +292,8 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
   struct imv_window *window = data;
   const uint32_t MOUSE1 = 0x110;
   if (button == MOUSE1) {
-    window->pointer.mouse1.current = state;
+    window->pointer.change.dmouse1 |= state != window->pointer.current.mouse1;
+    window->pointer.current.mouse1 = state;
   }
 }
 
@@ -308,9 +305,9 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
 
   struct imv_window *window = data;
   if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-    window->pointer.scroll.dy += wl_fixed_to_double(value);
+    window->pointer.change.scroll_dy += value;
   } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-    window->pointer.scroll.dx += wl_fixed_to_double(value);
+    window->pointer.change.scroll_dx += value;
   }
 }
 
@@ -320,17 +317,17 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
 
   struct imv_window *window = data;
 
-  int dx = window->pointer.x.current - window->pointer.x.last;
-  int dy = window->pointer.y.current - window->pointer.y.last;
-  window->pointer.x.last = window->pointer.x.current;
-  window->pointer.y.last = window->pointer.y.current;
+  int dx = wl_fixed_to_int(window->pointer.change.dx);
+  int dy = wl_fixed_to_int(window->pointer.change.dy);
+  window->pointer.change.dx -= wl_fixed_from_int(dx);
+  window->pointer.change.dy -= wl_fixed_from_int(dy);
   if (dx || dy) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_MOTION,
       .data = {
         .mouse_motion = {
-          .x = window->pointer.x.current,
-          .y = window->pointer.y.current,
+          .x = wl_fixed_to_double(window->pointer.current.x),
+          .y = wl_fixed_to_double(window->pointer.current.y),
           .dx = dx,
           .dy = dy,
         }
@@ -339,33 +336,32 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
     imv_window_push_event(window, &e);
   }
 
-  if (window->pointer.mouse1.current != window->pointer.mouse1.last) {
-    window->pointer.mouse1.last = window->pointer.mouse1.current;
+  if (window->pointer.change.dmouse1) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_BUTTON,
       .data = {
         .mouse_button = {
           .button = 1,
-          .pressed = window->pointer.mouse1.current
+          .pressed = window->pointer.current.mouse1
         }
       }
     };
     imv_window_push_event(window, &e);
   }
 
-  if (window->pointer.scroll.dx || window->pointer.scroll.dy) {
+  if (window->pointer.change.scroll_dx || window->pointer.change.scroll_dy) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_SCROLL,
       .data = {
         .mouse_scroll = {
-          .dx = window->pointer.scroll.dx,
-          .dy = window->pointer.scroll.dy
+          .dx = wl_fixed_to_double(window->pointer.change.scroll_dx),
+          .dy = wl_fixed_to_double(window->pointer.change.scroll_dy)
         }
       }
     };
     imv_window_push_event(window, &e);
-    window->pointer.scroll.dx = 0;
-    window->pointer.scroll.dy = 0;
+    window->pointer.change.scroll_dx = 0;
+    window->pointer.change.scroll_dy = 0;
   }
 
 }
@@ -884,7 +880,7 @@ void imv_window_set_fullscreen(struct imv_window *window, bool fullscreen)
 bool imv_window_get_mouse_button(struct imv_window *window, int button)
 {
   if (button == 1) {
-    return window->pointer.mouse1.last;
+    return window->pointer.current.mouse1;
   }
   return false;
 }
@@ -892,10 +888,10 @@ bool imv_window_get_mouse_button(struct imv_window *window, int button)
 void imv_window_get_mouse_position(struct imv_window *window, double *x, double *y)
 {
   if (x) {
-    *x = window->pointer.x.last;
+    *x = wl_fixed_to_double(window->pointer.current.x);
   }
   if (y) {
-    *y = window->pointer.y.last;
+    *y = wl_fixed_to_double(window->pointer.current.y);
   }
 }
 
