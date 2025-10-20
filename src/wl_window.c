@@ -2,6 +2,7 @@
 
 #include "keyboard.h"
 #include "list.h"
+#include "log.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -13,6 +14,7 @@
 #include <time.h>
 
 #include <wayland-client.h>
+#include <wayland-cursor.h>
 #include <wayland-egl.h>
 #include <EGL/egl.h>
 #include <GL/gl.h>
@@ -31,6 +33,7 @@ struct imv_window {
   struct wl_seat       *wl_seat;
   struct wl_keyboard   *wl_keyboard;
   struct wl_pointer    *wl_pointer;
+  struct wl_shm        *wl_shm;
   EGLDisplay           egl_display;
   EGLContext           egl_context;
   EGLSurface           egl_surface;
@@ -55,6 +58,10 @@ struct imv_window {
   int scale;
 
   struct {
+    struct wl_cursor_theme *theme;
+    struct wl_cursor_image *cursor_image;
+    struct wl_surface *surface;
+
     struct {
       wl_fixed_t x, y;
       bool mouse1;
@@ -82,6 +89,48 @@ static void set_nonblocking(int fd)
   flags |= O_NONBLOCK;
   int rc = fcntl(fd, F_SETFL, flags);
   assert(rc != -1);
+}
+
+static bool set_cursor(struct imv_window *window, const char *name) {
+  struct wl_cursor *cursor = wl_cursor_theme_get_cursor(window->pointer.theme,
+                                                        name);
+  if (!cursor || !cursor->image_count) {
+    return false;
+  }
+  window->pointer.cursor_image = cursor->images[0];
+  struct wl_buffer *cursor_buffer =
+      wl_cursor_image_get_buffer(window->pointer.cursor_image);
+
+  wl_surface_attach(window->pointer.surface, cursor_buffer, 0, 0);
+  wl_surface_set_buffer_scale(window->pointer.surface, window->scale);
+
+  wl_surface_commit(window->pointer.surface);
+  return true;
+}
+
+static void reload_cursor_theme(struct imv_window *window) {
+  if (window->pointer.theme) {
+    wl_cursor_theme_destroy(window->pointer.theme);
+  }
+  int size = atoi(getenv("XCURSOR_SIZE"));
+  if (!size) {
+    imv_log(IMV_WARNING, "Couldn't determine cursor size, defaulting to 24");
+    size = 24;
+  }
+  const char *theme_name = getenv("XCURSOR_THEME");
+  int scaled_size = size * window->scale;
+  imv_log(IMV_DEBUG, "Cursor theme: '%s', size: %d, scaled size: %d\n",
+          theme_name ? theme_name : "(null)", size, scaled_size);
+
+  window->pointer.theme = wl_cursor_theme_load(theme_name,
+                                               scaled_size,
+                                               window->wl_shm);
+  if (!window->pointer.surface) {
+    window->pointer.surface = wl_compositor_create_surface(window->wl_compositor);
+  }
+  if (!set_cursor(window, "default")) {
+    imv_log(IMV_WARNING, "No default cursor shape");
+  }
 }
 
 static void handle_ping_xdg_wm_base(void *data, struct xdg_wm_base *xdg,
@@ -254,6 +303,12 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
   (void)surface;
 
   struct imv_window *window = data;
+
+  wl_pointer_set_cursor(pointer, serial,
+                        window->pointer.surface,
+                        window->pointer.cursor_image->hotspot_x / window->scale,
+                        window->pointer.cursor_image->hotspot_y / window->scale);
+
   window->pointer.current.x = surface_x;
   window->pointer.current.y = surface_y;
   window->pointer.change.dx = 0;
@@ -520,6 +575,9 @@ static void on_global(void *data, struct wl_registry *registry, uint32_t id,
     wl_output_set_user_data(output_data->wl_output, output_data);
     wl_output_add_listener(output_data->wl_output, &output_listener, output_data);
     list_append(window->wl_outputs, output_data);
+  } else if (!strcmp(interface, wl_shm_interface.name)) {
+    version = imv_min(version, 1);
+    window->wl_shm = wl_registry_bind(registry, id, &wl_shm_interface, version);
   }
 }
 
@@ -550,6 +608,8 @@ static void update_scale(struct imv_window *window)
     size_t buffer_height = window->height * window->scale;
     wl_egl_window_resize(window->egl_window, buffer_width, buffer_height, 0, 0);
     glViewport(0, 0, buffer_width, buffer_height);
+
+    reload_cursor_theme(window);
 
     struct imv_event e = {
       .type = IMV_EVENT_RESIZE,
@@ -682,6 +742,7 @@ static bool connect_to_wayland(struct imv_window *window)
   assert(window->wl_compositor);
   assert(window->wl_xdg);
   assert(window->wl_seat);
+  assert(window->wl_shm);
 
   window->egl_display = eglGetDisplay(window->wl_display);
   eglInitialize(window->egl_display, NULL, NULL);
@@ -708,6 +769,8 @@ static void create_window(struct imv_window *window, int width, int height,
   window->wl_surface = wl_compositor_create_surface(window->wl_compositor);
   assert(window->wl_surface);
   wl_surface_add_listener(window->wl_surface, &surface_listener, window);
+
+  reload_cursor_theme(window);
 
   window->wl_xdg_surface = xdg_wm_base_get_xdg_surface(window->wl_xdg, window->wl_surface);
   assert(window->wl_xdg_surface);
@@ -741,6 +804,15 @@ static void shutdown_wayland(struct imv_window *window)
   }
   if (window->wl_keyboard) {
     wl_keyboard_destroy(window->wl_keyboard);
+  }
+  if (window->pointer.surface) {
+    wl_surface_destroy(window->pointer.surface);
+  }
+  if (window->pointer.theme) {
+    wl_cursor_theme_destroy(window->pointer.theme);
+  }
+  if (window->wl_shm) {
+    wl_shm_destroy(window->wl_shm);
   }
   if (window->wl_seat) {
     wl_seat_destroy(window->wl_seat);
