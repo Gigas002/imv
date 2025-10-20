@@ -20,6 +20,7 @@ packages:
   - pango-devel
   - turbojpeg-devel
   - wayland-devel
+  - wayland-protocols-devel
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

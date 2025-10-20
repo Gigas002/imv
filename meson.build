@@ -3,7 +3,7 @@ project(
   ['c'],
   version: '4.5.0',
   license: 'MIT',
-  meson_version: '>= 0.49',
+  meson_version: '>= 0.62',
   default_options: ['c_std=c99', 'warning_level=3'],
 )
 
@@ -89,8 +89,10 @@ files_imv = files_common + files(
 
 enabled_window_systems = []
 
+targets_wayland = []
+deps_for_wayland = []
 if build_wayland
-  files_wayland = files('src/wl_window.c', 'src/xdg-shell-protocol.c')
+  files_wayland = files('src/wl_window.c')
   deps_for_wayland = [
     dependency('wayland-client'),
     dependency('wayland-cursor'),
@@ -98,11 +100,15 @@ if build_wayland
     dependency('egl'),
     cc.find_library('rt'),
   ]
+  wl_mod = import('unstable-wayland')
+  xdg_shell = wl_mod.scan_xml(wl_mod.find_protocol('xdg-shell'))
+  targets_wayland += xdg_shell
+
   enabled_window_systems += 'wayland'
-else
-  deps_for_wayland = dep_null
 endif
 
+targets_x11 = []
+deps_for_x11 = []
 if build_x11
   files_x11 = files('src/x11_window.c')
   deps_for_x11 = [
@@ -112,8 +118,6 @@ if build_x11
     dependency('xkbcommon-x11'),
   ]
   enabled_window_systems += 'x11'
-else
-  deps_for_x11 = dep_null
 endif
 
 files_msg = files('src/imv_msg.c', 'src/ipc_common.c')
@@ -164,6 +168,7 @@ foreach ws : ['wayland', 'x11']
     executable(
       target_single_ws ? 'imv' : 'imv-@0@'.format(ws),
       [get_variable('files_' + ws), files_imv],
+      get_variable('targets_' + ws),
       dependencies: [deps_for_imv, get_variable('deps_for_' + ws)],
       install: true,
       install_dir: get_option('bindir'),

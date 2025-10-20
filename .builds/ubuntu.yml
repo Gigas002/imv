@@ -20,6 +20,7 @@ packages:
   - libxkbcommon-x11-dev
   - mesa-common-dev
   - meson
+  - wayland-protocols
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

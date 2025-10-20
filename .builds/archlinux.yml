@@ -20,6 +20,7 @@ packages:
   - meson
   - pango
   - wayland
+  - wayland-protocols
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
