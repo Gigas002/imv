@@ -10,6 +10,7 @@ packages:
   - libjpeg-turbo
   - libjxl
   - libnsgif
+  - libnsbmp
   - libpng
   - librsvg
   - libtiff

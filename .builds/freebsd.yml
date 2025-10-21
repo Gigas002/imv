@@ -9,6 +9,7 @@ packages:
   - graphics/libjpeg-turbo
   - graphics/libjxl
   - graphics/libnsgif
+  - graphics/libnsbmp
   - graphics/librsvg2-rust
   - graphics/png
   - graphics/tiff

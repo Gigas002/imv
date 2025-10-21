@@ -7,6 +7,7 @@ extern const struct imv_backend imv_backend_librsvg;
 extern const struct imv_backend imv_backend_libtiff;
 extern const struct imv_backend imv_backend_libjpeg;
 extern const struct imv_backend imv_backend_libnsgif;
+extern const struct imv_backend imv_backend_libnsbmp;
 extern const struct imv_backend imv_backend_libheif;
 extern const struct imv_backend imv_backend_libjxl;
 
@@ -36,6 +37,10 @@ int main(int argc, char **argv)
 
 #ifdef IMV_BACKEND_LIBNSGIF
   imv_install_backend(imv, &imv_backend_libnsgif);
+#endif
+
+#ifdef IMV_BACKEND_LIBNSBMP
+  imv_install_backend(imv, &imv_backend_libnsbmp);
 #endif
 
 #ifdef IMV_BACKEND_LIBHEIF

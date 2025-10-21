@@ -74,6 +74,14 @@ option('libnsgif',
   description : 'provides: animated gif'
 )
 
+# libnsbmp https://www.netsurf-browser.org/projects/libnsbmp/
+# depends: none
+# license: MIT
+option('libnsbmp',
+  type : 'feature',
+  description : 'provides: bmp'
+)
+
 # libheif http://www.libheif.org
 # depends: none
 # license: LGPL

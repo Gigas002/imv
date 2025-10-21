@@ -24,10 +24,10 @@ packages:
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
-  # libnsgif isn't packaged by fedora
+  # libnsgif and libnsbmp aren't packaged by fedora
   - gcc: |
-      CC=gcc meson setup imv build_gcc -D auto_features=enabled -D libnsgif=disabled -Dwerror=true
+      CC=gcc meson setup imv build_gcc -D auto_features=enabled -D libnsgif=disabled -D libnsbmp=disabled -Dwerror=true
       CC=gcc ninja -C build_gcc test
   - clang: |
-      CC=clang meson setup imv build_clang -D auto_features=enabled -D libnsgif=disabled -Dwerror=true
+      CC=clang meson setup imv build_clang -D auto_features=enabled -D libnsgif=disabled -D libnsbmp=disabled -Dwerror=true
       CC=clang ninja -C build_clang test

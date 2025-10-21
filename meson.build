@@ -130,6 +130,7 @@ foreach backend : [
   ['libjpeg', 'dependency', 'libturbojpeg', [], ['image/jpeg', 'image/jpg', 'image/pjpeg']],
   ['librsvg', 'dependency', 'librsvg-2.0', '>= 2.44', ['image/svg+xml']],
   ['libnsgif', 'dependency', 'libnsgif', '1.0.0', ['image/gif']],
+  ['libnsbmp', 'dependency', 'libnsbmp', [], ['image/bmp', 'image/x-bmp']],
   ['libheif', 'dependency', 'libheif', [], ['image/heif', 'image/avif']],
   ['libjxl', 'dependency', 'libjxl', [], ['image/jxl']],
 ]
