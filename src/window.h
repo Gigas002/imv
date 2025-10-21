@@ -13,6 +13,7 @@ enum imv_event_type {
   IMV_EVENT_MOUSE_MOTION,
   IMV_EVENT_MOUSE_BUTTON,
   IMV_EVENT_MOUSE_SCROLL,
+  IMV_EVENT_GESTURE_PINCH,
   IMV_EVENT_CUSTOM
 };
 
@@ -42,6 +43,11 @@ struct imv_event {
     struct {
       double dx, dy;
     } mouse_scroll;
+    struct {
+      int dx, dy;
+      double scale;
+      double rotation;
+    } gesture_pinch;
     void *custom;
   } data;
 };

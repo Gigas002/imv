@@ -19,6 +19,7 @@
 #include <EGL/egl.h>
 #include <GL/gl.h>
 #include "xdg-shell-client-protocol.h"
+#include "pointer-gestures-unstable-v1-client-protocol.h"
 
 #define imv_min(a,b) ((a) > (b) ? (b) : (a))
 
@@ -73,6 +74,14 @@ struct imv_window {
       bool dmouse1;
     } change;
   } pointer;
+
+  struct {
+    struct zwp_pointer_gestures_v1 *interface;
+    struct zwp_pointer_gesture_pinch_v1 *pinch;
+    wl_fixed_t dx, dy;
+    wl_fixed_t scale;
+    wl_fixed_t rotation;
+  } gestures;
 };
 
 struct output_data {
@@ -418,7 +427,6 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
     window->pointer.change.scroll_dx = 0;
     window->pointer.change.scroll_dy = 0;
   }
-
 }
 
 static void pointer_axis_source(void *data, struct wl_pointer *pointer,
@@ -459,6 +467,79 @@ static const struct wl_pointer_listener pointer_listener = {
   .axis_discrete = pointer_axis_discrete
 };
 
+static void pinch_begin(void *data,
+		      struct zwp_pointer_gesture_pinch_v1 *pinch,
+		      uint32_t serial,
+		      uint32_t time,
+		      struct wl_surface *surface,
+		      uint32_t fingers) {
+  (void)pinch;
+  (void)serial;
+  (void)time;
+  (void)surface;
+  (void)fingers;
+
+  struct imv_window *window = data;
+  window->gestures.dx = 0;
+  window->gestures.dy = 0;
+  window->gestures.scale = wl_fixed_from_double(1.0);
+}
+
+static void pinch_update(void *data,
+                         struct zwp_pointer_gesture_pinch_v1 *pinch,
+                         uint32_t time, wl_fixed_t dx, wl_fixed_t dy,
+                         wl_fixed_t scale, wl_fixed_t rotation) {
+  (void)pinch;
+  (void)time;
+
+  struct imv_window *window = data;
+  window->gestures.dx += dx;
+  window->gestures.dy += dy;
+
+  int scaled_dx = wl_fixed_to_int(window->scale * window->gestures.dx);
+  int scaled_dy = wl_fixed_to_int(window->scale * window->gestures.dy);
+  window->gestures.dx -= wl_fixed_from_int(scaled_dx) / window->scale;
+  window->gestures.dy -= wl_fixed_from_int(scaled_dy) / window->scale;
+
+  if (scaled_dx ||
+      scaled_dy ||
+      window->gestures.scale ||
+      window->gestures.rotation) {
+    struct imv_event e = {
+      .type = IMV_EVENT_GESTURE_PINCH,
+      .data = {
+        .gesture_pinch = {
+          .dx = scaled_dx,
+          .dy = scaled_dy,
+          .scale = wl_fixed_to_double(scale) / wl_fixed_to_double(window->gestures.scale),
+          .rotation = wl_fixed_to_double(rotation),
+        }
+      }
+    };
+    imv_window_push_event(window, &e);
+    window->gestures.scale = scale;
+    window->gestures.rotation = 0;
+  }
+}
+
+static void pinch_end(void *data,
+		    struct zwp_pointer_gesture_pinch_v1 *pinch,
+		    uint32_t serial,
+		    uint32_t time,
+		    int32_t cancelled) {
+  (void)data;
+  (void)pinch;
+  (void)serial;
+  (void)time;
+  (void)cancelled;
+}
+
+static const struct zwp_pointer_gesture_pinch_v1_listener pinch_listener = {
+  pinch_begin,
+  pinch_update,
+  pinch_end,
+};
+
 static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 {
   (void)seat;
@@ -468,8 +549,20 @@ static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabil
     if (!window->wl_pointer) {
       window->wl_pointer = wl_seat_get_pointer(window->wl_seat);
       wl_pointer_add_listener(window->wl_pointer, &pointer_listener, window);
+      if (window->gestures.interface) {
+        window->gestures.pinch = zwp_pointer_gestures_v1_get_pinch_gesture(
+          window->gestures.interface,
+          window->wl_pointer
+        );
+        zwp_pointer_gesture_pinch_v1_add_listener(window->gestures.pinch,
+                                                  &pinch_listener, window);
+      }
     }
   } else {
+    if (window->gestures.pinch) {
+      zwp_pointer_gesture_pinch_v1_destroy(window->gestures.pinch);
+      window->gestures.pinch = NULL;
+    }
     if (window->wl_pointer) {
       wl_pointer_release(window->wl_pointer);
       window->wl_pointer = NULL;
@@ -578,6 +671,9 @@ static void on_global(void *data, struct wl_registry *registry, uint32_t id,
   } else if (!strcmp(interface, wl_shm_interface.name)) {
     version = imv_min(version, 1);
     window->wl_shm = wl_registry_bind(registry, id, &wl_shm_interface, version);
+  } else if (!strcmp(interface, zwp_pointer_gestures_v1_interface.name)) {
+    window->gestures.interface = wl_registry_bind(
+      registry, id, &zwp_pointer_gestures_v1_interface, 3);
   }
 }
 
@@ -801,6 +897,12 @@ static void shutdown_wayland(struct imv_window *window)
   close(window->pipe_fds[1]);
   if (window->wl_pointer) {
     wl_pointer_destroy(window->wl_pointer);
+  }
+  if (window->gestures.pinch) {
+    zwp_pointer_gesture_pinch_v1_destroy(window->gestures.pinch);
+  }
+  if (window->gestures.interface) {
+    zwp_pointer_gestures_v1_destroy(window->gestures.interface);
   }
   if (window->wl_keyboard) {
     wl_keyboard_destroy(window->wl_keyboard);

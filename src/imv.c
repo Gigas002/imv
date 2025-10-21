@@ -469,6 +469,17 @@ static void event_handler(void *data, const struct imv_event *e)
             x, y, -e->data.mouse_scroll.dy);
       }
       break;
+    case IMV_EVENT_GESTURE_PINCH:
+      {
+        double x, y;
+        imv_window_get_mouse_position(imv->window, &x, &y);
+        imv_viewport_move(imv->view, e->data.gesture_pinch.dx,
+            e->data.gesture_pinch.dy, imv->current_image);
+        imv_viewport_scale_by(imv->view, imv->current_image, IMV_ZOOM_MOUSE,
+            x, y, e->data.gesture_pinch.scale);
+        imv_viewport_rotate_by(imv->view, e->data.gesture_pinch.rotation);
+      }
+      break;
     case IMV_EVENT_CUSTOM:
       consume_internal_event(imv, e->data.custom);
       break;

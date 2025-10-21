@@ -100,9 +100,16 @@ if build_wayland
     dependency('egl'),
     cc.find_library('rt'),
   ]
+
   wl_mod = import('unstable-wayland')
-  xdg_shell = wl_mod.scan_xml(wl_mod.find_protocol('xdg-shell'))
-  targets_wayland += xdg_shell
+  targets_wayland = [
+    wl_mod.scan_xml(wl_mod.find_protocol('xdg-shell')),
+    wl_mod.scan_xml(wl_mod.find_protocol(
+      'pointer-gestures',
+      state: 'unstable',
+      version: 1,
+    )),
+  ]
 
   enabled_window_systems += 'wayland'
 endif

@@ -60,6 +60,11 @@ void imv_viewport_move(struct imv_viewport *view, int x, int y,
 void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
                        enum imv_zoom_source, int mouse_x, int mouse_y, int amount);
 
+/* Scale the view by the given factor. imv_image* is used to get the image
+ * dimensions */
+void imv_viewport_scale_by(struct imv_viewport *view, const struct imv_image *image,
+                       enum imv_zoom_source, int mouse_x, int mouse_y, double scale_factor);
+
 /* Rotate the view by the given number of degrees */
 void imv_viewport_rotate_by(struct imv_viewport *view, double degrees);
 

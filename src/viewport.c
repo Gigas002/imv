@@ -121,8 +121,8 @@ void imv_viewport_move(struct imv_viewport *view, int x, int y,
   }
 }
 
-void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
-                       enum imv_zoom_source src, int mouse_x, int mouse_y, int amount)
+void imv_viewport_scale_by(struct imv_viewport *view, const struct imv_image *image,
+                       enum imv_zoom_source src, int mouse_x, int mouse_y, double scale_factor)
 {
   double prev_scale = view->scale;
   int x, y;
@@ -146,7 +146,6 @@ void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
   const int wc_x = view->buffer.width/2;
   const int wc_y = view->buffer.height/2;
 
-  const double scale_factor = pow(1.04, amount);
   view->scale *= scale_factor;
 
   const double min_scale = 0.1;
@@ -181,6 +180,12 @@ void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
 
   view->redraw = 1;
   view->locked = 1;
+}
+
+void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
+                       enum imv_zoom_source src, int mouse_x, int mouse_y, int amount)
+{
+  imv_viewport_scale_by(view, image, src, mouse_x, mouse_y, pow(1.04, amount));
 }
 
 void imv_viewport_rotate_by(struct imv_viewport *view, double degrees) {
