@@ -257,6 +257,7 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
       imv_log(IMV_DEBUG, "libjxl: valid jxl signature not found\n");
       munmap(pvt->data, pvt->data_len);
       ret = BACKEND_UNSUPPORTED;
+      free(pvt);
       goto end;
     default:
       pvt->owns_data = 1;
