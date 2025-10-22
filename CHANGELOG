@@ -20,6 +20,7 @@ BREAKING CHANGES:
 * Mime types listed in desktop files now correctly reflect enabled backends
 * New backends: libnsbmp, qoi, farbfeld, libwebp
 * Support for touchpad gestures on wayland
+* New command line option '-i' sets the app id of the created window
 
 v4.5.0 - 2024-02-20
 -------------------

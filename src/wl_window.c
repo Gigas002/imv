@@ -847,7 +847,7 @@ static bool connect_to_wayland(struct imv_window *window)
 }
 
 static void create_window(struct imv_window *window, int width, int height,
-    const char *title)
+    const char *title, const char *app_id)
 {
   eglBindAPI(EGL_OPENGL_API);
   EGLint attributes[] = {
@@ -878,7 +878,7 @@ static void create_window(struct imv_window *window, int width, int height,
 
   xdg_toplevel_add_listener(window->wl_xdg_toplevel, &toplevel_listener, window);
   xdg_toplevel_set_title(window->wl_xdg_toplevel, title);
-  xdg_toplevel_set_app_id(window->wl_xdg_toplevel, "imv");
+  xdg_toplevel_set_app_id(window->wl_xdg_toplevel, app_id);
 
   window->egl_window = wl_egl_window_create(window->wl_surface, width, height);
   window->egl_surface = eglCreateWindowSurface(window->egl_display, config, window->egl_window, NULL);
@@ -964,7 +964,8 @@ static void load_gl_functions(void) {
   }
 }
 
-struct imv_window *imv_window_create(int width, int height, const char *title)
+struct imv_window *imv_window_create(int width, int height, const char *title,
+                                     const char *app_id)
 {
   /* Ensure event writes will always be atomic */
   assert(sizeof(struct imv_event) <= PIPE_BUF);
@@ -978,7 +979,7 @@ struct imv_window *imv_window_create(int width, int height, const char *title)
   if (!connect_to_wayland(window)) {
     return NULL;
   }
-  create_window(window, width, height, title);
+  create_window(window, width, height, title, app_id);
   load_gl_functions();
 
   struct sigevent timer_handler = {

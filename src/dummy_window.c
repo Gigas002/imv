@@ -3,11 +3,13 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-struct imv_window *imv_window_create(int w, int h, const char *title)
+struct imv_window *imv_window_create(int w, int h, const char *title,
+                                     const char *app_id)
 {
   (void)w;
   (void)h;
   (void)title;
+  (void)app_id;
   return NULL;
 }
 

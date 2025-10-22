@@ -53,7 +53,8 @@ struct imv_event {
 };
 
 /* Create a new window */
-struct imv_window *imv_window_create(int w, int h, const char *title);
+struct imv_window *imv_window_create(int w, int h, const char *title,
+                                     const char *app_id);
 
 /* Clean up an imv_window instance */
 void imv_window_free(struct imv_window *window);

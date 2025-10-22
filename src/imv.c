@@ -177,6 +177,9 @@ struct imv {
   /* the user-specified format strings for the overlay and window title */
   char *title_text;
 
+  /* the user-specified string used as X11 res name or wayland app id */
+  char *app_id;
+
   /* imv subsystems */
   struct imv_binds *binds;
   struct imv_navigator *navigator;
@@ -558,6 +561,7 @@ struct imv *imv_create(void)
       " [${imv_width}x${imv_height}] [${imv_scale}%]"
       " $imv_current_file [$imv_scaling_mode]"
   );
+  imv->app_id = strdup("imv");
   imv->overlay.text_color.r = 255;
   imv->overlay.text_color.g = 255;
   imv->overlay.text_color.b = 255;
@@ -644,6 +648,7 @@ void imv_free(struct imv *imv)
 {
   free(imv->overlay.font.name);
   free(imv->title_text);
+  free(imv->app_id);
   free(imv->overlay.text);
   imv_binds_free(imv->binds);
   imv_navigator_free(imv->navigator);
@@ -743,6 +748,17 @@ static bool parse_window_title(struct imv *imv, const char *name)
   if (strcmp(name, "")) {
     free(imv->title_text);
     imv->title_text = strdup(name);
+    return true;
+  }
+
+  return false;
+}
+
+static bool parse_app_id(struct imv *imv, const char *id)
+{
+  if (strcmp(id, "")) {
+    free(imv->app_id);
+    imv->app_id = strdup(id);
     return true;
   }
 
@@ -878,7 +894,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
   int o;
 
  /* TODO getopt_long */
-  while ((o = getopt(argc, argv, "frdxhvlu:s:n:b:t:c:w:W:H:")) != -1) {
+  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:w:W:H:")) != -1) {
     switch(o) {
       case 'f': imv->start_fullscreen = true;                    break;
       case 'r': imv->recursive_load = true;                      break;
@@ -932,6 +948,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
         break;
       case 'c': list_append(imv->startup_commands, optarg); break;
       case 'w': parse_window_title(imv, optarg); break;
+      case 'i': parse_app_id(imv, optarg); break;
       case '?':
         imv_log(IMV_ERROR, "Unknown argument '%c'. Aborting.\n", optopt);
         return false;
@@ -1275,7 +1292,8 @@ int imv_run(struct imv *imv)
 
 static bool setup_window(struct imv *imv)
 {
-  imv->window = imv_window_create(imv->initial_width, imv->initial_height, "imv");
+  imv->window = imv_window_create(imv->initial_width, imv->initial_height,
+                                  "imv", imv->app_id);
 
   if (!imv->window) {
     imv_log(IMV_ERROR, "Failed to create window\n");

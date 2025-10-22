@@ -47,6 +47,9 @@ Options
 *-f*::
 	Start fullscreen.
 
+*-i* <id>::
+	Set the X11 resource name/wayland app id of the created window.
+
 *-l*::
 	List open files to stdout at exit.
 

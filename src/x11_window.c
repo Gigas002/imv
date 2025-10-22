@@ -103,7 +103,8 @@ static void load_gl_functions(void) {
   }
 }
 
-struct imv_window *imv_window_create(int w, int h, const char *title)
+struct imv_window *imv_window_create(int w, int h, const char *title,
+                                     const char *app_id)
 {
   /* Ensure event writes will always be atomic */
   assert(sizeof(struct imv_event) <= PIPE_BUF);
@@ -149,7 +150,7 @@ struct imv_window *imv_window_create(int w, int h, const char *title)
   window->x_fullscreen = XInternAtom(window->x_display, "_NET_WM_STATE_FULLSCREEN", true);
 
   XClassHint hint = {
-    .res_name = "imv",
+    .res_name = (char*)app_id,
     .res_class= "imv",
   };
   XSetClassHint(window->x_display, window->x_window, &hint);
