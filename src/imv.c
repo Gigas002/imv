@@ -821,6 +821,10 @@ static void *load_paths_from_stdin(void *data)
   char buf[PATH_MAX];
   while (fgets(buf, sizeof(buf), imv->stdin_pipe) != NULL) {
     size_t len = strlen(buf);
+    if (len == 0 || len >= PATH_MAX) {
+      imv_log(IMV_ERROR, "Failed to read path from stdin. Aborting.\n");
+      abort();
+    }
     if (buf[len-1] == '\n') {
       buf[--len] = 0;
     }
