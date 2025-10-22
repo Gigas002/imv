@@ -1779,8 +1779,13 @@ static void command_zoom(struct list *args, const char *argstr, void *data)
     if (!strcmp(str, "actual")) {
       imv_viewport_scale_to_actual(imv->view, imv->current_image);
     } else {
-      long int amount = strtol(args->items[1], NULL, 10);
-      imv_viewport_zoom(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount);
+      char *endptr;
+      long int amount = strtol(args->items[1], &endptr, 10);
+      if (*endptr == '%') {
+        imv_viewport_scale_by(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount/100.0);
+      } else if (*endptr == '\0') {
+        imv_viewport_zoom(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount);
+      }
     }
   }
 }
