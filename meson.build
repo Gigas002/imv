@@ -132,6 +132,7 @@ files_msg = files('src/imv_msg.c', 'src/ipc_common.c')
 enabled_backends = []
 supported_mime_types = []
 foreach backend : [
+  ['farbfeld', 'builtin', [], [], ['image/x-farbfeld']],
   ['libtiff', 'dependency', 'libtiff-4', [], ['image/tiff', 'image/tiff-fx']],
   ['libpng', 'dependency', 'libpng', [], ['image/png', 'image/x-png']],
   ['libjpeg', 'dependency', 'libturbojpeg', [], ['image/jpeg', 'image/jpg', 'image/pjpeg']],
@@ -153,6 +154,10 @@ foreach backend : [
     _dep = cc.find_library(_dep_name, required: get_option(_backend_name))
   elif _dep_type == 'header'
     _dep = (cc.has_header(_dep_name, required: get_option(_backend_name))
+      ? declare_dependency()
+      : disabler())
+  elif _dep_type == 'builtin'
+    _dep = (get_option(_backend_name).allowed()
       ? declare_dependency()
       : disabler())
   else

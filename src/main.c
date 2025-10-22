@@ -2,6 +2,7 @@
 
 struct imv_backend;
 
+extern const struct imv_backend imv_backend_farbfeld;
 extern const struct imv_backend imv_backend_libpng;
 extern const struct imv_backend imv_backend_librsvg;
 extern const struct imv_backend imv_backend_libtiff;
@@ -19,6 +20,10 @@ int main(int argc, char **argv)
   if (!imv) {
     return 1;
   }
+
+#ifdef IMV_BACKEND_FARBFELD
+  imv_install_backend(imv, &imv_backend_farbfeld);
+#endif
 
 #ifdef IMV_BACKEND_LIBTIFF
   imv_install_backend(imv, &imv_backend_libtiff);

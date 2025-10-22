@@ -16,7 +16,7 @@ BREAKING CHANGES:
 * Fix scaling of SVG images on HiDPI monitors
 * Try to display broken JPEG images when the corruption is not fatal
 * Mime types listed in desktop files now correctly reflect enabled backends
-* New backends: libnsbmp, qoi
+* New backends: libnsbmp, qoi, farbfeld
 * Support for touchpad gestures on wayland
 
 v4.5.0 - 2024-02-20
