@@ -18,6 +18,7 @@ packages:
   - mesa-libGL-devel
   - meson
   - pango-devel
+  - qoi-devel
   - turbojpeg-devel
   - wayland-devel
   - wayland-protocols-devel

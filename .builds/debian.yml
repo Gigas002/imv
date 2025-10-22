@@ -11,6 +11,7 @@ packages:
   - libjxl-dev
   - libpango1.0-dev
   - libpng-dev
+  - libqoi-dev
   - librsvg2-dev
   - libtiff-dev
   - libturbojpeg-dev

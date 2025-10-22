@@ -97,3 +97,11 @@ option('libjxl',
   type : 'feature',
   description : 'provides: jxl'
 )
+
+# qoi https://qoiformat.org/
+# depends: none
+# license: MIT
+option('qoi',
+  type : 'feature',
+  description : 'provides: qoi'
+)

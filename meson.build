@@ -140,6 +140,7 @@ foreach backend : [
   ['libnsbmp', 'dependency', 'libnsbmp', [], ['image/bmp', 'image/x-bmp']],
   ['libheif', 'dependency', 'libheif', [], ['image/heif', 'image/avif']],
   ['libjxl', 'dependency', 'libjxl', [], ['image/jxl']],
+  ['qoi', 'header', 'qoi.h', [], ['image/qoi']],
 ]
   _backend_name = backend[0]
   _dep_type = backend[1]
@@ -150,6 +151,10 @@ foreach backend : [
     _dep = dependency(_dep_name, required: get_option(_backend_name), version: backend[3])
   elif _dep_type == 'library'
     _dep = cc.find_library(_dep_name, required: get_option(_backend_name))
+  elif _dep_type == 'header'
+    _dep = (cc.has_header(_dep_name, required: get_option(_backend_name))
+      ? declare_dependency()
+      : disabler())
   else
     error('invalid dep type: @0@'.format(_dep_type))
   endif

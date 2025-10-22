@@ -140,6 +140,7 @@ Installation
 | libnsbmp       |          | Optional. Provides BMP support.                |
 | libheif        |          | Optional. Provides HEIF support.               |
 | libjxl         |          | Optional. Provides JPEGXL support.             |
+| qoi            |          | Optional. Provides QOI support.                |
 
 Dependencies are determined by which backends and window systems are enabled
 when building `imv`. You can find a summary of which backends are available
