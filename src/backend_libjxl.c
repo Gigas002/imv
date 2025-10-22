@@ -211,6 +211,7 @@ static enum backend_result open_memory(void *data, size_t sz, struct imv_source 
       // fallthrough
     case JXL_SIG_INVALID:
       imv_log(IMV_DEBUG, "libjxl: valid jxl signature not found\n");
+      free(pvt);
       return BACKEND_UNSUPPORTED;
     default:
       pvt->owns_data = 0;
