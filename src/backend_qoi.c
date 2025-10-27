@@ -31,7 +31,7 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
 
   struct private *private = raw_private;
 
-  size_t len = (size_t)private->desc.height * private->desc.width * private->desc.channels;
+  size_t len = (size_t)private->desc.height * private->desc.width * 4;
   void *bitmap = malloc(len);
   if (!bitmap) {
     return;
