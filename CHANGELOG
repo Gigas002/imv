@@ -1,6 +1,12 @@
 imv Changelog
 =============
 
+Unreleased
+-------------------
+
+* In multi-windows installation the imv script now contains absolute paths to
+  the executables allowing multiple installations on a single machine to coexist
+
 v5.0.0 - 2025-11-09
 -------------------
 

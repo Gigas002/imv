@@ -204,10 +204,14 @@ if get_option('contrib-commands')
 endif
 
 if not target_single_ws
-  install_data(
-    files('files/imv'),
+  configure_file(
+    input: 'files/imv.in',
+    output: 'imv',
     install_dir: get_option('bindir'),
     install_mode: 'rwxr-xr-x',
+    configuration: {
+      'bindir': get_option('prefix') / get_option('bindir')
+    }
   )
 endif
 
