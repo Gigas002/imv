@@ -15,6 +15,7 @@
 #include <wordexp.h>
 
 #include "backend.h"
+#include "backends.h"
 #include "binds.h"
 #include "canvas.h"
 #include "commands.h"
@@ -183,7 +184,7 @@ struct imv {
   /* imv subsystems */
   struct imv_binds *binds;
   struct imv_navigator *navigator;
-  struct list *backends;
+  struct backends *backends;
   struct imv_source *current_source;
   struct imv_source *last_source;
   struct imv_commands *commands;
@@ -227,7 +228,6 @@ static void render_window(struct imv *imv);
 static void update_env_vars(struct imv *imv);
 static size_t generate_env_text(struct imv *imv, char *buf, size_t len, const char *format);
 static size_t read_from_stdin(void **buffer);
-static void imv_backends_free(struct list *backends);
 
 /* Finds the next split between commands in a string (';'). Provides a pointer
  * to the next character after the delimiter as out, or a pointer to '\0' if
@@ -546,9 +546,13 @@ struct imv *imv_create(void)
   imv->loop_input = true;
   imv->overlay.font.name = strdup("Monospace");
   imv->overlay.font.size = 24;
+  imv->backends = backends_create();
+  if (!imv->backends) {
+    imv_log(IMV_ERROR, "Failed to create backends list.\n");
+    return NULL;
+  }
   imv->binds = imv_binds_create();
   imv->navigator = imv_navigator_create();
-  imv->backends = list_create();
   imv->commands = imv_commands_create();
   imv->console = imv_console_create();
   imv_console_set_command_callback(imv->console, &command_callback, imv);
@@ -674,29 +678,11 @@ void imv_free(struct imv *imv)
     imv_window_free(imv->window);
   }
 
-  imv_backends_free(imv->backends);
+  backends_free(imv->backends);
 
   list_free(imv->startup_commands);
 
   free(imv);
-}
-
-void imv_install_backend(struct imv *imv, const struct imv_backend *backend)
-{
-  if (!backend->init || backend->init() == BACKEND_SUCCESS) {
-    list_append(imv->backends, (void*)backend);
-  }
-}
-
-static void imv_backends_free(struct list *backends)
-{
-  for (size_t i = 0; i < backends->len; ++i) {
-    struct imv_backend *backend = backends->items[i];
-    if (backend->uninit) {
-      backend->uninit();
-    }
-  }
-  list_free(backends);
 }
 
 static bool parse_bg(struct imv *imv, const char *bg)
@@ -880,17 +866,7 @@ static void print_help(struct imv *imv)
   printf("imv %s\nSee manual for usage information.\n", IMV_VERSION);
   puts("This version of imv has been compiled with the following backends:\n");
 
-  for (size_t i = 0; i < imv->backends->len; ++i) {
-    struct imv_backend *backend = imv->backends->items[i];
-    printf("Name: %s\n"
-           "Description: %s\n"
-           "Website: %s\n"
-           "License: %s\n\n",
-           backend->name,
-           backend->description,
-           backend->website,
-           backend->license);
-  }
+  print_backend_infos(imv->backends);
 
   puts("imv's full source code is published under the terms of the MIT\n"
        "license, and can be found at https://sr.ht/~exec64/imv\n"
@@ -1130,41 +1106,16 @@ int imv_run(struct imv *imv)
 
         enum backend_result result = BACKEND_UNSUPPORTED;
 
-        if (!imv->backends) {
-          imv_log(IMV_ERROR, "No backends installed. Unable to load image.\n");
-        }
+        assert(imv->backends);
 
-        for (size_t i = 0; i < imv->backends->len; ++i) {
-          const struct imv_backend *backend = imv->backends->items[i];
-          if (path_is_stdin) {
-
-            if (!backend->open_memory) {
-              /* memory loading unsupported by backend */
-              continue;
-            }
-
-            if (!imv->stdin_image_data || !imv->stdin_image_data_len) {
-              /* Skip if image failed to load */
-              continue;
-            }
-
-            result = backend->open_memory(imv->stdin_image_data,
+        if (path_is_stdin) {
+          /* Skip if image failed to load */
+          if (imv->stdin_image_data && imv->stdin_image_data_len) {
+            result = backends_open_memory(imv->backends, imv->stdin_image_data,
                 imv->stdin_image_data_len, &new_source);
-          } else {
-
-            if (!backend->open_path) {
-              /* path loading unsupported by backend */
-              continue;
-            }
-
-            result = backend->open_path(current_path, &new_source);
           }
-          if (result == BACKEND_UNSUPPORTED) {
-            /* Try the next backend */
-            continue;
-          } else {
-            break;
-          }
+        } else {
+          result = backends_open_path(imv->backends, current_path, &new_source);
         }
 
         if (result == BACKEND_SUCCESS) {

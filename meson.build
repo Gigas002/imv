@@ -72,7 +72,6 @@ files_common = files(
   'src/commands.c',
   'src/console.c',
   'src/image.c',
-  'src/imv.c',
   'src/ipc.c',
   'src/ipc_common.c',
   'src/keyboard.c',
@@ -84,6 +83,8 @@ files_common = files(
 )
 
 files_imv = files_common + files(
+  'src/backends.c',
+  'src/imv.c',
   'src/main.c',
 )
 
