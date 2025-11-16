@@ -17,6 +17,9 @@ enum backend_result {
 
   /* There's data, but this backend doesn't understand it. */
   BACKEND_UNSUPPORTED = 2,
+
+  /* Catchall for other errors. */
+  BACKEND_ERROR = 3,
 };
 
 /* A backend is responsible for taking a path, or a raw data pointer, and

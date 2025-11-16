@@ -10,53 +10,38 @@
 
 struct private {
   TIFF *tiff;
-  void *data;
-  size_t pos, len;
   int width;
   int height;
 };
 
 static tsize_t mem_read(thandle_t data, tdata_t buffer, tsize_t len)
 {
-  struct private *private = (struct private*)data;
-  memcpy(buffer, (char*)private->data + private->pos, len);
-  private->pos += len;
-  return len;
+  return fread(buffer, 1, len, data);
 }
 
 static tsize_t mem_write(thandle_t data, tdata_t buffer, tsize_t len)
 {
-  struct private *private = (struct private*)data;
-  memcpy((char*)private->data + private->pos, buffer, len);
-  private->pos += len;
-  return len;
+  return fwrite(buffer, 1, len, data);
 }
 
-static int mem_close(thandle_t data)
-{
-  (void)data;
-  return 0;
-}
+static int mem_close(thandle_t data) { return fclose(data); }
 
 static toff_t mem_seek(thandle_t data, toff_t pos, int whence)
 {
-  struct private *private = (struct private*)data;
-  if (whence == SEEK_SET) {
-    private->pos = pos;
-  } else if (whence == SEEK_CUR) {
-    private->pos += pos;
-  } else if (whence == SEEK_END) {
-    private->pos = private->len + pos;
-  } else {
-    return -1;
-  }
-  return private->pos;
+  return fseek(data, pos, whence) == -1 ? -1 : ftell(data);
 }
 
 static toff_t mem_size(thandle_t data)
 {
-  struct private *private = (struct private*)data;
-  return private->len;
+  long pos = ftell(data);
+  if (fseek(data, 0L, SEEK_END) != 0) {
+    return -1;
+  }
+  long size = ftell(data);
+  if (fseek(data, pos, SEEK_SET) != 0) {
+    return -1;
+  }
+  return size;
 }
 
 static void free_private(void *raw_private)
@@ -131,23 +116,26 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
 static enum backend_result open_memory(void *data, size_t len, struct imv_source **src)
 {
   TIFFSetErrorHandler(NULL);
-  struct private *private = malloc(sizeof *private);
-  private->data = data;
-  private->len = len;
-  private->pos = 0;
-  private->tiff = TIFFClientOpen("-", "rm", (thandle_t)private,
-      &mem_read, &mem_write, &mem_seek, &mem_close, &mem_size,
-      NULL, NULL);
-  if (!private->tiff) {
+  FILE *f = fmemopen(data, len, "r");
+  if (!f) {
+    return BACKEND_ERROR;
+  }
+  struct private *priv = malloc(sizeof *priv);
+  if (!priv) {
+    return BACKEND_ERROR;
+  }
+  priv->tiff = TIFFClientOpen("-", "rm", (thandle_t)f, &mem_read, &mem_write, &mem_seek,
+      &mem_close, &mem_size, NULL, NULL);
+  if (!priv->tiff) {
     /* Header is read, so no BAD_PATH check here */
-    free(private);
+    free(priv);
     return BACKEND_UNSUPPORTED;
   }
 
-  TIFFGetField(private->tiff, TIFFTAG_IMAGEWIDTH, &private->width);
-  TIFFGetField(private->tiff, TIFFTAG_IMAGELENGTH, &private->height);
+  TIFFGetField(priv->tiff, TIFFTAG_IMAGEWIDTH, &priv->width);
+  TIFFGetField(priv->tiff, TIFFTAG_IMAGELENGTH, &priv->height);
 
-  *src = imv_source_create(&vtable, private);
+  *src = imv_source_create(&vtable, priv);
   return BACKEND_SUCCESS;
 }
 
