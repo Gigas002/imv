@@ -66,12 +66,14 @@ deps_for_imv = [
 ]
 
 files_common = files(
+  'src/backends.c',
   'src/binds.c',
   'src/bitmap.c',
   'src/canvas.c',
   'src/commands.c',
   'src/console.c',
   'src/image.c',
+  'src/imv.c',
   'src/ipc.c',
   'src/ipc_common.c',
   'src/keyboard.c',
@@ -80,12 +82,6 @@ files_common = files(
   'src/navigator.c',
   'src/source.c',
   'src/viewport.c',
-)
-
-files_imv = files_common + files(
-  'src/backends.c',
-  'src/imv.c',
-  'src/main.c',
 )
 
 enabled_window_systems = []
@@ -168,7 +164,7 @@ foreach backend : [
 
   if _dep.found()
     deps_for_imv += _dep
-    files_imv += files('src/backend_@0@.c'.format(_backend_name))
+    files_common += files('src/backend_@0@.c'.format(_backend_name))
     add_project_arguments('-DIMV_BACKEND_@0@'.format(_backend_name.to_upper()), language: 'c')
     enabled_backends += _backend_name
     supported_mime_types += _mime_types
@@ -177,7 +173,7 @@ endforeach
 
 executable(
   'imv-msg',
-  [files_common, files('src/imv_msg.c', 'src/dummy_window.c')],
+  files('src/imv_msg.c', 'src/ipc_common.c'),
   dependencies: deps_for_imv,
   install: true,
   install_dir: get_option('bindir'),
@@ -187,7 +183,7 @@ foreach ws : ['wayland', 'x11']
   if get_variable('build_' + ws)
     executable(
       target_single_ws ? 'imv' : 'imv-@0@'.format(ws),
-      [get_variable('files_' + ws), files_imv],
+      [get_variable('files_' + ws), files_common, files('src/main.c')],
       get_variable('targets_' + ws),
       dependencies: [deps_for_imv, get_variable('deps_for_' + ws)],
       install: true,
@@ -245,7 +241,7 @@ install_data(
 dep_cmocka = dependency('cmocka', required: get_option('test'))
 
 if dep_cmocka.found()
-  foreach test : ['list', 'navigator']
+  foreach test : ['list', 'navigator', 'backends']
     test(
       'test_@0@'.format(test),
       executable(
