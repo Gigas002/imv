@@ -20,6 +20,7 @@ packages:
   - x11-toolkits/pango
   - x11/libxcb
   - x11/libxkbcommon
+  - xxd
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

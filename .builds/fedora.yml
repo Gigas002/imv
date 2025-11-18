@@ -23,6 +23,7 @@ packages:
   - turbojpeg-devel
   - wayland-devel
   - wayland-protocols-devel
+  - xxd
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

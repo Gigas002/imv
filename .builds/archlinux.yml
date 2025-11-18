@@ -24,6 +24,7 @@ packages:
   - qoi
   - wayland
   - wayland-protocols
+  - tinyxxd
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

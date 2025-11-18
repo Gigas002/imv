@@ -2,6 +2,8 @@
 #include "source_private.h"
 
 #include <pthread.h>
+#include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 struct imv_source {
@@ -46,9 +48,16 @@ void imv_source_async_free(struct imv_source *src)
   pthread_detach(thread);
 }
 
-static void *first_frame_thread(void *src)
+static void *first_frame_thread(void *src_raw)
 {
-  imv_source_load_first_frame(src);
+  struct imv_source *src = src_raw;
+  struct imv_source_message msg = {
+    .source = src,
+    .user_data = src->callback_data
+  };
+  if(imv_source_load_first_frame(src, &msg.image, &msg.frametime)) {
+    src->callback(&msg);
+  }
   return NULL;
 }
 
@@ -80,26 +89,23 @@ void imv_source_free(struct imv_source *src)
   free(src);
 }
 
-void imv_source_load_first_frame(struct imv_source *src)
+bool imv_source_load_first_frame(struct imv_source *src, struct imv_image **image, int *frametime)
 {
   if (!src->vtable->load_first_frame) {
-    return;
+    return false;
   }
 
   if (pthread_mutex_trylock(&src->busy)) {
-    return;
+    return false;
   }
 
-  struct imv_source_message msg = {
-    .source = src,
-    .user_data = src->callback_data
-  };
+  src->vtable->load_first_frame(src->private, image, frametime);
 
-  src->vtable->load_first_frame(src->private, &msg.image, &msg.frametime);
-
-  pthread_mutex_unlock(&src->busy);
-
-  src->callback(&msg);
+  if(pthread_mutex_unlock(&src->busy)) {
+    // We locked the mutex so this can never fail
+    assert(false);
+  }
+  return true;
 }
 
 void imv_source_load_next_frame(struct imv_source *src)

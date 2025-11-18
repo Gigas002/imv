@@ -24,6 +24,7 @@ packages:
   - mesa-common-dev
   - meson
   - wayland-protocols
+  - xxd
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:

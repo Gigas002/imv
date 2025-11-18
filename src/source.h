@@ -1,6 +1,8 @@
 #ifndef IMV_SOURCE_H
 #define IMV_SOURCE_H
 
+#include <stdbool.h>
+
 /* While imv_image represents a single frame of an image, be it a bitmap or
  * vector image, imv_source represents an open handle to an image file, which
  * can emit one or more imv_images.
@@ -18,7 +20,7 @@ void imv_source_free(struct imv_source *src);
 /* Load the first frame. Silently aborts if source is already loading. Async
  * version performs loading in background. */
 void imv_source_async_load_first_frame(struct imv_source *src);
-void imv_source_load_first_frame(struct imv_source *src);
+bool imv_source_load_first_frame(struct imv_source *src, struct imv_image **image, int *frametime);
 
 /* Load the next frame. Silently aborts if source is already loading. Async
  * version performs loading in background. */

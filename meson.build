@@ -246,15 +246,29 @@ install_data(
 )
 
 dep_cmocka = dependency('cmocka', required: get_option('test'))
+xxd = find_program('xxd', required: get_option('test'))
 
-if dep_cmocka.found()
+if dep_cmocka.found() and xxd.found()
+  embed = generator(
+    xxd,
+    output: '@PLAINNAME@.c',
+    arguments: ['-n', '@PLAINNAME@', '-i', '@INPUT@', '@OUTPUT@']
+  )
+
+  test_images = static_library(
+    'test_images',
+    embed.process([
+      'test/data/sample.tiff',
+    ])
+  )
+
   foreach test : ['list', 'navigator', 'backends']
     test(
       'test_@0@'.format(test),
       executable(
         'test_@0@'.format(test),
         [files('test/@0@.c'.format(test), 'src/dummy_window.c')],
-        link_with: libimv,
+        link_with: [libimv, test_images],
         include_directories: include_directories('src'),
         dependencies: [deps_for_imv, dep_cmocka],
       )
