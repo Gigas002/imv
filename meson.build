@@ -171,6 +171,12 @@ foreach backend : [
   endif
 endforeach
 
+libimv = static_library(
+  'imv',
+  files_common,
+  dependencies: deps_for_imv,
+)
+
 executable(
   'imv-msg',
   files('src/imv_msg.c', 'src/ipc_common.c'),
@@ -183,8 +189,9 @@ foreach ws : ['wayland', 'x11']
   if get_variable('build_' + ws)
     executable(
       target_single_ws ? 'imv' : 'imv-@0@'.format(ws),
-      [get_variable('files_' + ws), files_common, files('src/main.c')],
+      [get_variable('files_' + ws), files('src/main.c')],
       get_variable('targets_' + ws),
+      link_with: libimv,
       dependencies: [deps_for_imv, get_variable('deps_for_' + ws)],
       install: true,
       install_dir: get_option('bindir'),
@@ -246,7 +253,8 @@ if dep_cmocka.found()
       'test_@0@'.format(test),
       executable(
         'test_@0@'.format(test),
-        [files('test/@0@.c'.format(test), 'src/dummy_window.c'), files_common],
+        [files('test/@0@.c'.format(test), 'src/dummy_window.c')],
+        link_with: libimv,
         include_directories: include_directories('src'),
         dependencies: [deps_for_imv, dep_cmocka],
       )
