@@ -121,8 +121,9 @@ static void reload_cursor_theme(struct imv_window *window) {
   if (window->pointer.theme) {
     wl_cursor_theme_destroy(window->pointer.theme);
   }
-  int size = atoi(getenv("XCURSOR_SIZE"));
-  if (!size) {
+  const char *xcursor_size = getenv("XCURSOR_SIZE");
+  int size;
+  if (!xcursor_size || !(size = atoi(xcursor_size))) {
     imv_log(IMV_WARNING, "Couldn't determine cursor size, defaulting to 24");
     size = 24;
   }
