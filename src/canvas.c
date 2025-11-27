@@ -255,21 +255,6 @@ void imv_canvas_draw(struct imv_canvas *canvas)
   glPopMatrix();
 }
 
-static GLenum convert_pixelformat(enum imv_pixelformat fmt)
-{
-  /* opengl uses RGBA order, not ARGB, so we get it to
-   * flip the bytes around so ARGB -> BGRA
-   */
-  if (fmt == IMV_ARGB) {
-    return GL_BGRA;
-  } else if (fmt == IMV_ABGR) {
-    return GL_RGBA;
-  } else {
-    imv_log(IMV_WARNING, "Unknown pixel format. Defaulting to ARGB\n");
-    return GL_BGRA;
-  }
-}
-
 static GLint convert_upscaling_method(enum upscaling_method upscaling_method) {
   if (upscaling_method == UPSCALING_LINEAR) {
     return GL_LINEAR;
@@ -309,8 +294,6 @@ static void prepare_cache(struct imv_canvas *canvas,
                           struct imv_bitmap *bitmap,
                           enum upscaling_method upscaling_method)
 {
-  const GLenum format = convert_pixelformat(bitmap->format);
-
   const GLint max_tex_size = get_gl_max_texture_size();
   const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
   const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
@@ -340,7 +323,7 @@ static void prepare_cache(struct imv_canvas *canvas,
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
                    min(bitmap->width - j * max_tex_size, max_tex_size),
                    min(bitmap->height - i * max_tex_size, max_tex_size),
-                   0, format, GL_UNSIGNED_INT_8_8_8_8_REV, bitmap->data);
+                   0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap->data);
       if (imv_glGenerateMipmap) {
         imv_glGenerateMipmap(GL_TEXTURE_2D);
       }

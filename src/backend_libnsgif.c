@@ -84,7 +84,6 @@ static void push_current_image(struct private *private,
   struct imv_bitmap *bmp = malloc(sizeof *bmp);
   bmp->width = gif_info->width;
   bmp->height = gif_info->height;
-  bmp->format = IMV_ABGR;
   size_t len = 4 * bmp->width * bmp->height;
   bmp->data = malloc(len);
   memcpy(bmp->data, gif_frame_data, len);

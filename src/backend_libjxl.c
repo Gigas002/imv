@@ -68,7 +68,6 @@ static void push_frame(struct private *pvt, struct imv_image **img, int *frameti
 
   bmp->width = pvt->width;
   bmp->height = pvt->height;
-  bmp->format = IMV_ABGR;
   bmp->data = malloc(sz);
   memcpy(bmp->data, pvt->frames[pvt->cur_frame].data, sz);
 

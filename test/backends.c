@@ -44,7 +44,6 @@ static const uint8_t SAMPLE_RAW[] = {0xff, 0x00, 0x00, 0xff, 0x00, 0xff, 0x00,
 
 static void assert_bitmap_equal_to_sample(struct imv_bitmap *bitmap)
 {
-  assert_int_equal(bitmap->format, IMV_ABGR);
   assert_int_equal(bitmap->width, SAMPLE_WIDTH);
   assert_int_equal(bitmap->height, SAMPLE_HEIGHT);
   assert_memory_equal(bitmap->data, &SAMPLE_RAW, sizeof(SAMPLE_RAW));

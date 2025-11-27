@@ -64,7 +64,6 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   struct imv_bitmap *bmp = malloc(sizeof *bmp);
   bmp->width = width;
   bmp->height = height;
-  bmp->format = IMV_ABGR;
   bmp->data = raw_bmp;
   *image = imv_image_create_from_bitmap(bmp);
 }
