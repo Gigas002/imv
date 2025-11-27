@@ -6,8 +6,6 @@ imv - X11/Wayland Image Viewer
 
 [Project home](https://sr.ht/~exec64/imv/)
 
-imv is currently seeking a new maintainer to adopt it. Please email the author if interested.
-
 Features
 --------
 
