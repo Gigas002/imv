@@ -1,7 +1,7 @@
 imv Changelog
 =============
 
-Unreleased
+v5.0.1 - 2025-11-27
 -------------------
 
 * In multi-windows installation the imv script now contains absolute paths to
