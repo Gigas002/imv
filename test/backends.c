@@ -73,12 +73,39 @@ static void test_open_ttf_file(void **state)
 }
 #endif
 
+#ifdef IMV_BACKEND_LIBPNG
+extern unsigned char sample_png[];
+extern unsigned int sample_png_len;
+static void test_open_png_file(void **state)
+{
+  struct imv_source *src;
+  assert_int_equal(
+      backends_open_memory(*state, sample_png, sample_png_len, &src),
+      BACKEND_SUCCESS);
+
+  struct imv_image *image;
+  int frametime;
+  assert_true(imv_source_load_first_frame(src, &image, &frametime));
+
+  assert_int_equal(frametime, 0);
+  struct imv_bitmap *bitmap = imv_image_get_bitmap(image);
+  assert_non_null(bitmap);
+  assert_bitmap_equal_to_sample(bitmap);
+
+  imv_image_free(image);
+  imv_source_free(src);
+}
+#endif
+
 int main(void)
 {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_open_garbage_fails),
 #ifdef IMV_BACKEND_LIBTIFF
       cmocka_unit_test(test_open_ttf_file),
+#endif
+#ifdef IMV_BACKEND_LIBPNG
+      cmocka_unit_test(test_open_png_file),
 #endif
   };
 
