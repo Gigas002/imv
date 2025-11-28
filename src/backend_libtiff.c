@@ -4,6 +4,7 @@
 #include "source.h"
 #include "source_private.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <tiffio.h>
@@ -57,21 +58,39 @@ static void free_private(void *raw_private)
   free(private);
 }
 
-static void load_image(void *raw_private, struct imv_image **image, int *frametime)
+static uint8_t *convert_tiff_bitmap_to_rgba_inplace(
+    uint32_t *bitmap, size_t len)
+{
+  uint8_t *buf = (uint8_t *)bitmap;
+
+  for (size_t i = 0; i < len; i++) {
+    uint32_t tmp = bitmap[i];
+    buf[4 * i + 0] = TIFFGetR(tmp);
+    buf[4 * i + 1] = TIFFGetG(tmp);
+    buf[4 * i + 2] = TIFFGetB(tmp);
+    buf[4 * i + 3] = TIFFGetA(tmp);
+  }
+
+  return buf;
+}
+
+static void load_image(
+    void *raw_private, struct imv_image **image, int *frametime)
 {
   *image = NULL;
   *frametime = 0;
 
   struct private *private = raw_private;
 
+  size_t bitmap_size = private->height * private->width;
   /* libtiff suggests using their own allocation routines to support systems
    * with segmented memory. I have no desire to support that, so I'm just
    * going to use vanilla malloc/free. Systems where that isn't acceptable
    * don't have upstream support from imv.
    */
-  void *bitmap = malloc(private->height * private->width * 4);
-  int rcode = TIFFReadRGBAImageOriented(private->tiff, private->width, private->height,
-      bitmap, ORIENTATION_TOPLEFT, 0);
+  uint32_t *bitmap = malloc(bitmap_size * sizeof(uint32_t));
+  int rcode = TIFFReadRGBAImageOriented(private->tiff, private->width,
+      private->height, bitmap, ORIENTATION_TOPLEFT, 0);
 
   /* 1 = success, unlike the rest of *nix */
   if (rcode != 1) {
@@ -81,7 +100,7 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   struct imv_bitmap *bmp = malloc(sizeof *bmp);
   bmp->width = private->width;
   bmp->height = private->height;
-  bmp->data = bitmap;
+  bmp->data = convert_tiff_bitmap_to_rgba_inplace(bitmap, bitmap_size);
   *image = imv_image_create_from_bitmap(bmp);
 }
 
