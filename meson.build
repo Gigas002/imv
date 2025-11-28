@@ -260,6 +260,8 @@ if dep_cmocka.found() and xxd.found()
     embed.process([
       'test/data/sample.tiff',
       'test/data/sample.png',
+      'test/data/sample.jpeg',
+      'test/data/sample_cmyk.jpeg',
     ])
   )
 

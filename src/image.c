@@ -101,6 +101,7 @@ int imv_image_height(const struct imv_image *image)
 /* Non-public functions, only used by imv_canvas */
 struct imv_bitmap *imv_image_get_bitmap(const struct imv_image *image)
 {
+  assert(image);
   return image->type == IMV_IMAGE_BITMAP ? image->val.bitmap : NULL;
 }
 
