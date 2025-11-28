@@ -50,13 +50,13 @@ static void assert_bitmap_equal_to_sample(struct imv_bitmap *bitmap)
 }
 
 #ifdef IMV_BACKEND_LIBTIFF
-extern unsigned char ___test_data_sample_tiff[];
-extern unsigned int ___test_data_sample_tiff_len;
+extern unsigned char sample_tiff[];
+extern unsigned int sample_tiff_len;
 static void test_open_ttf_file(void **state)
 {
   struct imv_source *src;
-  assert_int_equal(backends_open_memory(*state, ___test_data_sample_tiff,
-                       ___test_data_sample_tiff_len, &src),
+  assert_int_equal(
+      backends_open_memory(*state, sample_tiff, sample_tiff_len, &src),
       BACKEND_SUCCESS);
 
   struct imv_image *image;
@@ -74,13 +74,13 @@ static void test_open_ttf_file(void **state)
 #endif
 
 #ifdef IMV_BACKEND_LIBPNG
-extern unsigned char ___test_data_sample_png[];
-extern unsigned int ___test_data_sample_png_len;
+extern unsigned char sample_png[];
+extern unsigned int sample_png_len;
 static void test_open_png_file(void **state)
 {
   struct imv_source *src;
-  assert_int_equal(backends_open_memory(*state, ___test_data_sample_png,
-                       ___test_data_sample_png_len, &src),
+  assert_int_equal(
+      backends_open_memory(*state, sample_png, sample_png_len, &src),
       BACKEND_SUCCESS);
 
   struct imv_image *image;
