@@ -47,10 +47,10 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
     copy_with_stride(bitmap, data, width, height, stride);
   }
 
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
-  bmp->width = width,
-  bmp->height = height,
-  bmp->data = bitmap;
+  struct imv_bitmap bmp;
+  bmp.width = width,
+  bmp.height = height,
+  bmp.data = bitmap;
   *image = imv_image_create_from_bitmap(bmp);
 }
 

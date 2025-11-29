@@ -8,6 +8,6 @@ struct imv_bitmap {
 };
 
 /* Clean up a bitmap */
-void imv_bitmap_free(struct imv_bitmap *bmp);
+void imv_bitmap_free(struct imv_bitmap bmp);
 
 #endif

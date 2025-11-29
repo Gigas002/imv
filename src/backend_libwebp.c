@@ -44,12 +44,11 @@ static void first_frame(void *raw_pvt, struct imv_image **img, int *frametime)
 
   struct private *pvt = raw_pvt;
 
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
+  struct imv_bitmap bmp;
 
-  bmp->data = WebPDecodeRGBA(pvt->data, pvt->data_len, &bmp->width, &bmp->height);
-  if (bmp->data == NULL) {
+  bmp.data = WebPDecodeRGBA(pvt->data, pvt->data_len, &bmp.width, &bmp.height);
+  if (bmp.data == NULL) {
     imv_log(IMV_ERROR, "libwebp: failed to decode image\n");
-    free(bmp);
     return;
   }
 

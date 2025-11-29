@@ -63,13 +63,13 @@ static void free_private(void *raw_pvt)
 
 static void push_frame(struct private *pvt, struct imv_image **img, int *frametime)
 {
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
   size_t sz = pvt->width * pvt->height * BACKEND_NB_CHANNELS;
 
-  bmp->width = pvt->width;
-  bmp->height = pvt->height;
-  bmp->data = malloc(sz);
-  memcpy(bmp->data, pvt->frames[pvt->cur_frame].data, sz);
+  struct imv_bitmap bmp;
+  bmp.width = pvt->width;
+  bmp.height = pvt->height;
+  bmp.data = malloc(sz);
+  memcpy(bmp.data, pvt->frames[pvt->cur_frame].data, sz);
 
   *img = imv_image_create_from_bitmap(bmp);
   *frametime = pvt->frames[pvt->cur_frame].frametime;

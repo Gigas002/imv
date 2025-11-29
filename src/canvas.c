@@ -32,7 +32,7 @@ struct imv_canvas {
   int width;
   int height;
   struct {
-    struct imv_bitmap *bitmap;
+    const struct imv_bitmap *bitmap;
     enum upscaling_method upscaling_method;
     size_t tex_count;
     GLuint *textures;
@@ -291,7 +291,7 @@ static void update_upscaling_method(struct imv_canvas *canvas,
 }
 
 static void prepare_cache(struct imv_canvas *canvas,
-                          struct imv_bitmap *bitmap,
+                          const struct imv_bitmap *bitmap,
                           enum upscaling_method upscaling_method)
 {
   const GLint max_tex_size = get_gl_max_texture_size();
@@ -332,7 +332,7 @@ static void prepare_cache(struct imv_canvas *canvas,
 }
 
 static void draw_bitmap(struct imv_canvas *canvas,
-                        struct imv_bitmap *bitmap,
+                        const struct imv_bitmap *bitmap,
                         int bx, int by, double scale,
                         double rotation, bool mirrored,
                         enum upscaling_method upscaling_method)

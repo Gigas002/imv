@@ -97,10 +97,10 @@ static void load_image(
     return;
   }
 
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
-  bmp->width = private->width;
-  bmp->height = private->height;
-  bmp->data = convert_tiff_bitmap_to_rgba_inplace(bitmap, bitmap_size);
+  struct imv_bitmap bmp;
+  bmp.width = private->width;
+  bmp.height = private->height;
+  bmp.data = convert_tiff_bitmap_to_rgba_inplace(bitmap, bitmap_size);
   *image = imv_image_create_from_bitmap(bmp);
 }
 

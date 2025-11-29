@@ -46,7 +46,7 @@ static int imv_min(int a, int b) { return a < b ? a : b; }
 static int imv_max(int a, int b) { return a > b ? a : b; }
 
 static void assert_bitmap_equal_to_sample(
-    struct imv_bitmap *bitmap, int tolerance)
+    const struct imv_bitmap *bitmap, int tolerance)
 {
   assert_int_equal(bitmap->width, SAMPLE_WIDTH);
   assert_int_equal(bitmap->height, SAMPLE_HEIGHT);
@@ -74,7 +74,7 @@ static void test_opening_sample_from_memory(
 
   assert_non_null(image);
   assert_int_equal(frametime, 0);
-  struct imv_bitmap *bitmap = imv_image_get_bitmap(image);
+  const struct imv_bitmap *bitmap = imv_image_get_bitmap(image);
   assert_non_null(bitmap);
   assert_bitmap_equal_to_sample(bitmap, tolerance);
 
