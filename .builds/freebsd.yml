@@ -4,6 +4,7 @@ packages:
   - devel/meson
   - devel/pkgconf
   - devel/inih
+  - graphics/lcms2
   - graphics/libglvnd
   - graphics/libheif
   - graphics/libjpeg-turbo

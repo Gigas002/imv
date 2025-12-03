@@ -3,6 +3,7 @@ packages:
   - asciidoc
   - clang
   - inih-devel
+  - lcms2-devel
   - libX11-devel
   - libcmocka-devel
   - libheif-devel

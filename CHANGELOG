@@ -1,6 +1,11 @@
 imv Changelog
 =============
 
+UNRELEASED
+----------
+
+* Add support for CMYK jpeg files via optional LittleCMS dependency
+
 v5.0.1 - 2025-11-27
 -------------------
 

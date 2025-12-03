@@ -4,6 +4,7 @@ packages:
   - clang
   - cmocka
   - icu
+  - lcms2
   - libglvnd
   - libheif
   - libinih

@@ -9,6 +9,7 @@ packages:
   - libicu-dev
   - libinih-dev
   - libjxl-dev
+  - liblcms2-dev
   - libpango1.0-dev
   - libpng-dev
   - libqoi-dev

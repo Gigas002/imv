@@ -66,6 +66,14 @@ option('libjpeg',
   description : 'provides: jpeg'
 )
 
+# lcms2: https://github.com/mm2/Little-CMS
+# depends: none
+# license: MIT
+option('lcms2',
+  type : 'feature',
+  description : 'provides: better color conversion for JPEG images with embedded ICC profile'
+)
+
 # librsvg https://wiki.gnome.org/Projects/LibRsvg
 # depends: gdk-pixbuf2 pango libcroco
 # license: LGPL

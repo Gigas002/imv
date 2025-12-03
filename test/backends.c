@@ -108,26 +108,15 @@ static void test_open_jpeg_file(void **state)
   test_opening_sample_from_memory(*state, sample_jpeg, sample_jpeg_len, 20);
 }
 
-// TODO: fix opening CMYK files
+#ifdef IMV_BACKEND_LCMS2
 extern unsigned char sample_cmyk_jpeg[];
 extern unsigned int sample_cmyk_jpeg_len;
 static void test_open_cmyk_jpeg_file(void **state)
 {
-  struct imv_source *src;
-  assert_int_equal(backends_open_memory(
-                       *state, sample_cmyk_jpeg, sample_cmyk_jpeg_len, &src),
-      BACKEND_SUCCESS);
-
-  struct imv_image *image;
-  int frametime;
-
-  assert_true(imv_source_load_first_frame(src, &image, &frametime));
-
-  assert_null(image);
-
-  imv_image_free(image);
-  imv_source_free(src);
+  test_opening_sample_from_memory(
+      *state, sample_cmyk_jpeg, sample_cmyk_jpeg_len, 20);
 }
+#endif
 #endif
 
 int main(void)
@@ -142,7 +131,9 @@ int main(void)
 #endif
 #ifdef IMV_BACKEND_LIBJPEG
       cmocka_unit_test(test_open_jpeg_file),
+#ifdef IMV_BACKEND_LCMS2
       cmocka_unit_test(test_open_cmyk_jpeg_file),
+#endif
 #endif
   };
 

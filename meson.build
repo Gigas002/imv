@@ -171,6 +171,14 @@ foreach backend : [
   endif
 endforeach
 
+lcms2 = dependency('lcms2', required: get_option('lcms2'))
+libjpeg = dependency('libjpeg', required: get_option('lcms2'))
+if lcms2.found() and libjpeg.found()
+  deps_for_imv += lcms2
+  deps_for_imv += libjpeg
+  add_project_arguments('-DIMV_BACKEND_LCMS2', language: 'c')
+endif
+
 libimv = static_library(
   'imv',
   files_common,
