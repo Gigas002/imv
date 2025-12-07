@@ -301,7 +301,7 @@ int imv_navigator_poll_changed(struct imv_navigator *nav)
 
   const time_t cur_time = imv_time();
   /* limit polling to once per second */
-  if (nav->last_check < cur_time - 1) {
+  if (nav->last_check < cur_time) {
     nav->last_check = cur_time;
 
     struct nav_item *cur_item = nav->paths->items[nav->cur_path];

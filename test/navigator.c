@@ -92,9 +92,15 @@ static void test_navigator_file_changed(void **state)
   assert_true(imv_navigator_poll_changed(nav));
   assert_false(imv_navigator_poll_changed(nav));
 
-  modified_time = 1;
-  current_time = 2;
+  current_time = 1;
+  // Not modified
+  assert_false(imv_navigator_poll_changed(nav));
 
+  modified_time = 1;
+  // Modified but ignored due to stat throttling
+  assert_false(imv_navigator_poll_changed(nav));
+
+  current_time = 2;
   assert_true(imv_navigator_poll_changed(nav));
 
   imv_navigator_free(nav);
