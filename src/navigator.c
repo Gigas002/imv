@@ -8,10 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <errno.h>
 
 #include "list.h"
+#include "platform.h"
 
 /* Some systems like GNU/Hurd don't define PATH_MAX */
 #ifndef PATH_MAX
@@ -291,7 +291,7 @@ int imv_navigator_poll_changed(struct imv_navigator *nav)
 {
   if (nav->changed) {
     nav->changed = 0;
-    nav->last_change = time(NULL);
+    nav->last_change = imv_time();
     return 1;
   }
 
@@ -299,18 +299,14 @@ int imv_navigator_poll_changed(struct imv_navigator *nav)
     return 0;
   };
 
-  time_t cur_time = time(NULL);
+  const time_t cur_time = imv_time();
   /* limit polling to once per second */
   if (nav->last_check < cur_time - 1) {
     nav->last_check = cur_time;
 
-    struct stat file_info;
     struct nav_item *cur_item = nav->paths->items[nav->cur_path];
-    if (stat(cur_item->path, &file_info) == -1) {
-      return 0;
-    }
+    const time_t file_changed = imv_file_last_modified(cur_item->path);
 
-    time_t file_changed = file_info.st_mtim.tv_sec;
     if (file_changed > nav->last_change) {
       nav->last_change = file_changed;
       return 1;

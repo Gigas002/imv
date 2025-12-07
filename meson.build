@@ -89,7 +89,7 @@ enabled_window_systems = []
 targets_wayland = []
 deps_for_wayland = []
 if build_wayland
-  files_wayland = files('src/wl_window.c')
+  files_wayland = files('src/wl_window.c', 'src/platform_posix.c')
   deps_for_wayland = [
     dependency('wayland-client'),
     dependency('wayland-cursor'),
@@ -114,7 +114,7 @@ endif
 targets_x11 = []
 deps_for_x11 = []
 if build_x11
-  files_x11 = files('src/x11_window.c')
+  files_x11 = files('src/x11_window.c', 'src/platform_posix.c')
   deps_for_x11 = [
     dependency('x11'),
     dependency('gl'),
@@ -278,7 +278,7 @@ if dep_cmocka.found() and xxd.found()
       'test_@0@'.format(test),
       executable(
         'test_@0@'.format(test),
-        [files('test/@0@.c'.format(test), 'src/dummy_window.c')],
+        [files('test/@0@.c'.format(test), 'src/dummy_window.c', 'src/platform_dummy.c')],
         link_with: [libimv, test_images],
         include_directories: include_directories('src'),
         dependencies: [deps_for_imv, dep_cmocka],
