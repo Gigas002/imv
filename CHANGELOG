@@ -5,6 +5,7 @@ UNRELEASED
 ----------
 
 * Add support for CMYK jpeg files via optional LittleCMS dependency
+* Fix libtiff backend on big endian hosts
 
 v5.0.1 - 2025-11-27
 -------------------
