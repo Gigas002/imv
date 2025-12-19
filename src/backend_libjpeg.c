@@ -131,7 +131,7 @@ static int icc_cmyk_conversion(cmsHPROFILE cmyk_profile,
   // lcms2 cannot handle alpha channels when converting between different
   // formats, i.e. CMYK to RGBA, so we make sure the alpha channel is
   // initialized at 0xff (see https://github.com/mm2/Little-CMS/issues/281)
-  memset(bitmap, 0xff, private->len);
+  memset(bitmap, 0xff, private->height * private->width * 4);
   cmsSetLogErrorHandler(cmc_error_handler);
   cmsHPROFILE output_profile = cmsCreate_sRGBProfile();
   cmsHTRANSFORM transform = cmsCreateTransform(cmyk_profile, TYPE_CMYK_8,
