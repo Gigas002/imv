@@ -53,17 +53,11 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   if (bmp_decode(&priv->img) != BMP_OK) {
     return;
   }
-  size_t len = priv->img.width * priv->img.height * BPP;
-
-  struct imv_bitmap bmp;
-  bmp.data = malloc(len);
+  struct imv_bitmap bmp = imv_bitmap_alloc(priv->img.width, priv->img.height);
   if (!bmp.data) {
     return;
   }
-
-  bmp.width = priv->img.width;
-  bmp.height = priv->img.height;
-  memcpy(bmp.data, priv->img.bitmap, len);
+  memcpy(bmp.data, priv->img.bitmap, imv_bitmap_size(bmp));
   *image = imv_image_create_from_bitmap(bmp);
 }
 

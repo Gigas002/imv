@@ -81,12 +81,11 @@ static void push_current_image(struct private *private,
   const nsgif_info_t *gif_info = nsgif_get_info(private->gif);
   const nsgif_frame_info_t *frame_info = nsgif_get_frame_info(private->gif, private->current_frame);
 
-  struct imv_bitmap bmp;
-  bmp.width = gif_info->width;
-  bmp.height = gif_info->height;
-  size_t len = 4 * bmp.width * bmp.height;
-  bmp.data = malloc(len);
-  memcpy(bmp.data, gif_frame_data, len);
+  struct imv_bitmap bmp = imv_bitmap_alloc(gif_info->width, gif_info->height);
+  if (!bmp.data) {
+    return;
+  }
+  memcpy(bmp.data, gif_frame_data, imv_bitmap_size(bmp));
 
   *image = imv_image_create_from_bitmap(bmp);
   *frametime = frame_info->delay * 10.0;

@@ -5,6 +5,7 @@
 #include "source.h"
 #include "source_private.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -40,31 +41,33 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
     return;
   }
 
-  const int width = png_get_image_width(private->png, private->info);
-  const int height = png_get_image_height(private->png, private->info);
+  struct imv_bitmap bmp =
+      imv_bitmap_alloc(png_get_image_width(private->png, private->info),
+          png_get_image_height(private->png, private->info));
+  if (!bmp.data) {
+    return;
+  }
+  png_bytep *rows = malloc(sizeof(png_bytep) * bmp.height);
+  if (!rows) {
+    imv_bitmap_free(bmp);
+    return;
+  }
 
-  png_bytep *rows = malloc(sizeof(png_bytep) * height);
   size_t row_len = png_get_rowbytes(private->png, private->info);
-  rows[0] = malloc(height * row_len);
-  for (int y = 1; y < height; ++y) {
-    rows[y] = rows[0] + row_len * y;
+  assert(bmp.height * row_len == imv_bitmap_size(bmp));
+  for (int y = 0; y < bmp.height; ++y) {
+    rows[y] = bmp.data + row_len * y;
   }
 
   if (setjmp(png_jmpbuf(private->png))) {
     return;
   }
-
   png_read_image(private->png, rows);
-  void *raw_bmp = rows[0];
+
   free(rows);
   fclose(private->file);
   private->file = NULL;
 
-
-  struct imv_bitmap bmp;
-  bmp.width = width;
-  bmp.height = height;
-  bmp.data = raw_bmp;
   *image = imv_image_create_from_bitmap(bmp);
 }
 

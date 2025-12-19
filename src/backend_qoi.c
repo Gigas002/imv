@@ -31,20 +31,16 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
 
   struct private *private = raw_private;
 
-  size_t len = (size_t)private->desc.height * private->desc.width * 4;
-  void *bitmap = malloc(len);
-  if (!bitmap) {
+  struct imv_bitmap bmp =
+      imv_bitmap_alloc(private->desc.width, private->desc.height);
+  if (!bmp.data) {
     return;
   }
-  memcpy(bitmap, private->bitmap, len);
+  memcpy(bmp.data, private->bitmap, imv_bitmap_size(bmp));
 
-  struct imv_bitmap bmp;
-  bmp.width = private->desc.width;
-  bmp.height = private->desc.height;
-  bmp.data = bitmap;
   *image = imv_image_create_from_bitmap(bmp);
-
 }
+
 static const struct imv_source_vtable vtable = {
   .load_first_frame = load_image,
   .free = free_private

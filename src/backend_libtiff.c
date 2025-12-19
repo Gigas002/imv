@@ -4,6 +4,7 @@
 #include "source.h"
 #include "source_private.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,26 +82,29 @@ static void load_image(
   *frametime = 0;
 
   struct private *private = raw_private;
-
-  size_t bitmap_size = private->height * private->width;
   /* libtiff suggests using their own allocation routines to support systems
    * with segmented memory. I have no desire to support that, so I'm just
    * going to use vanilla malloc/free. Systems where that isn't acceptable
    * don't have upstream support from imv.
    */
-  uint32_t *bitmap = malloc(bitmap_size * sizeof(uint32_t));
+  struct imv_bitmap bmp = imv_bitmap_alloc(private->width, private->height);
+  if (!bmp.data) {
+    return;
+  }
+
+  // `bmp.data` comes from malloc so alignment should be fine
+  assert((uintptr_t)bmp.data % sizeof(uint32_t) == 0);
+
   int rcode = TIFFReadRGBAImageOriented(private->tiff, private->width,
-      private->height, bitmap, ORIENTATION_TOPLEFT, 0);
+      private->height, (uint32_t *)bmp.data, ORIENTATION_TOPLEFT, 0);
 
   /* 1 = success, unlike the rest of *nix */
   if (rcode != 1) {
     return;
   }
 
-  struct imv_bitmap bmp;
-  bmp.width = private->width;
-  bmp.height = private->height;
-  bmp.data = convert_tiff_bitmap_to_rgba_inplace(bitmap, bitmap_size);
+  bmp.data = convert_tiff_bitmap_to_rgba_inplace(
+      (uint32_t *)bmp.data, imv_bitmap_size(bmp) / sizeof(uint32_t));
   *image = imv_image_create_from_bitmap(bmp);
 }
 

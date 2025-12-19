@@ -24,7 +24,8 @@ static void free_private(void *raw_private)
 
 static void copy_with_stride(unsigned char *dst, const unsigned char *src, int width, int height, int stride) {
   for (int i = 0; i < height; i++) {
-    memcpy(&dst[i * width * 4], &src[i*stride], width * 4);
+    memcpy(&dst[i * width * BYTES_PER_CHANNEL], &src[i * stride],
+        width * BYTES_PER_CHANNEL);
   }
 }
 
@@ -36,21 +37,22 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   struct private *private = raw_private;
 
   int stride;
-  const uint8_t *data = heif_image_get_plane_readonly(private->img, heif_channel_interleaved, &stride);
+  const uint8_t *data = heif_image_get_plane_readonly(
+      private->img, heif_channel_interleaved, &stride);
 
-  int width = heif_image_get_width(private->img, heif_channel_interleaved);
-  int height = heif_image_get_height(private->img, heif_channel_interleaved);
-  unsigned char *bitmap = malloc(width * height * 4);
-  if (width * 4 == stride) {
-    memcpy(bitmap, data, width * height * 4);
-  } else {
-    copy_with_stride(bitmap, data, width, height, stride);
+  struct imv_bitmap bmp = imv_bitmap_alloc(
+      heif_image_get_width(private->img, heif_channel_interleaved),
+      heif_image_get_height(private->img, heif_channel_interleaved));
+  if (!bmp.data) {
+    return;
   }
 
-  struct imv_bitmap bmp;
-  bmp.width = width,
-  bmp.height = height,
-  bmp.data = bitmap;
+  if (bmp.width * BYTES_PER_CHANNEL == stride) {
+    memcpy(bmp.data, data, imv_bitmap_size(bmp));
+  } else {
+    copy_with_stride(bmp.data, data, bmp.width, bmp.height, stride);
+  }
+
   *image = imv_image_create_from_bitmap(bmp);
 }
 

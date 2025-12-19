@@ -215,12 +215,16 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
 
   struct private *private = raw_private;
 
-  void *bitmap = malloc(private->height * private->width * 4);
+  struct imv_bitmap bmp = imv_bitmap_alloc(private->width, private->height);
+  if (!bmp.data) {
+    return;
+  }
+
   int rcode = -1;
   if (private->colorspace == TJCS_CMYK || private->colorspace == TJCS_YCCK) {
-    rcode = decompress_from_cmyk(private, bitmap);
+    rcode = decompress_from_cmyk(private, bmp.data);
   } else {
-    rcode = decompress_from_rgba(private, bitmap);
+    rcode = decompress_from_rgba(private, bmp.data);
   }
 
   if (rcode) {
@@ -232,15 +236,11 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
       imv_log(IMV_ERROR, "Fatal error while decompressing image: %s\n",
           tjGetErrorStr2(private->jpeg), tjGetErrorCode(private->jpeg),
           TJERR_WARNING);
-      free(bitmap);
+      imv_bitmap_free(bmp);
       return;
     }
   }
 
-  struct imv_bitmap bmp;
-  bmp.width = private->width;
-  bmp.height = private->height;
-  bmp.data = bitmap;
   *image = imv_image_create_from_bitmap(bmp);
 }
 
