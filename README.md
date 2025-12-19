@@ -124,6 +124,8 @@ Installation
 | xkbcommon      |          | Required.                                      |
 | pangocairo     |          | Required.                                      |
 | icu            |          | Required.                                      |
+| xxd            |          | Optional. Required for testing.                |
+| cmocka         |          | Optional. Required for testing.                |
 | X11            |          | Optional. Required for X11 support.            |
 | GL             |          | Optional. Required for X11 support.            |
 | xcb            |          | Optional. Required for X11 support.            |
@@ -134,7 +136,8 @@ Installation
 | libtiff        |          | Optional. Provides TIFF support.               |
 | libpng         |          | Optional. Provides PNG support.                |
 | libjpeg-turbo  |          | Optional. Provides JPEG support.               |
-| librsvg        | >=v2.44  | Optional. Provides SVG support.                |
+| LittleCMS      | 2        | Optional. Provides CMYK support for JPEGs.     |
+| librsvg        | 2.44     | Optional. Provides SVG support.                |
 | libnsgif       | 1.0.0    | Optional. Provides animated GIF support.       |
 | libnsbmp       |          | Optional. Provides BMP support.                |
 | libheif        | 1.13.0   | Optional. Provides HEIF support.               |
