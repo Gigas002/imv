@@ -132,6 +132,9 @@ struct imv {
   /* read paths from stdin, as opposed to image data */
   bool paths_from_stdin;
 
+  /* minimum log_level to print to stderr */
+  enum imv_log_level log_level;
+
   /* FILE to use when reading paths from stdin */
   FILE *stdin_pipe;
 
@@ -526,18 +529,20 @@ static bool hex_value_to_alpha(const char* hex, unsigned char *alpha)
 
 static void log_to_stderr(enum imv_log_level level, const char *text, void *data)
 {
-  (void)data;
-  if (level >= IMV_INFO) {
+  struct imv *imv = data;
+  if (level >= imv->log_level) {
     fputs(text, stderr);
   }
 }
 
 struct imv *imv_create(void)
 {
-  /* Attach log to stderr */
-  imv_log_add_log_callback(&log_to_stderr, NULL);
-
   struct imv *imv = calloc(1, sizeof *imv);
+
+  /* Attach log to stderr */
+  imv->log_level = IMV_INFO;
+  imv_log_add_log_callback(&log_to_stderr, imv);
+
   imv->initial_width = 1280;
   imv->initial_height = 720;
   imv->need_redraw = true;
@@ -884,7 +889,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
   int o;
 
  /* TODO getopt_long */
-  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:w:W:H:")) != -1) {
+  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:w:W:H:V")) != -1) {
     switch(o) {
       case 'f': imv->start_fullscreen = true;                    break;
       case 'r': imv->recursive_load = true;                      break;
@@ -892,6 +897,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
       case 'x': imv->loop_input = false;                         break;
       case 'l': imv->list_files_at_exit = true;                  break;
       case 'n': imv->starting_path = optarg;                     break;
+      case 'V': imv->log_level = IMV_DEBUG;                      break;
       case 'h':
         print_help(imv);
         imv->quit = true;

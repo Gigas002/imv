@@ -79,6 +79,9 @@ Options
 *-x*::
 	Disable looping of input paths.
 
+*-V*::
+	Enable verbose logging
+
 *-W* <width>::
 	Initial width of window.
 
