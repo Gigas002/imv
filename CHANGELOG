@@ -5,6 +5,7 @@ UNRELEASED
 ----------
 
 * Add support for CMYK jpeg files via optional LittleCMS dependency
+* Add support for animated WebP files
 * Fix libtiff backend on big endian hosts
 * Add new '-V' flag to enable verbose logs
 

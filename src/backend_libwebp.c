@@ -11,11 +11,13 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <webp/decode.h>
+#include <webp/demux.h>
 
 struct private {
-  void *data;
-  ssize_t data_len;
+  WebPData webp_data;
+  WebPAnimDecoder *dec;
+  WebPAnimInfo anim_info;
+  int prev_timestamp;
   bool is_mmaped;
 };
 
@@ -27,50 +29,77 @@ static void free_private(void *raw_pvt)
 
   struct private *pvt = raw_pvt;
 
+  WebPAnimDecoderDelete(pvt->dec);
+
   if (pvt->is_mmaped) {
-    munmap(pvt->data, pvt->data_len);
-    pvt->is_mmaped = false;
+    munmap((void *)pvt->webp_data.bytes, pvt->webp_data.size);
   }
 
   free(pvt);
 }
 
-static void first_frame(void *raw_pvt, struct imv_image **img, int *frametime)
+static void next_frame(void *raw_pvt, struct imv_image **img, int *frametime)
 {
   *img = NULL;
   *frametime = 0;
 
-  imv_log(IMV_DEBUG, "libwebp: first_frame called\n");
+  imv_log(IMV_DEBUG, "libwebp: next_frame or first_frame called\n");
 
   struct private *pvt = raw_pvt;
 
-  struct imv_bitmap bmp;
+  if (!WebPAnimDecoderHasMoreFrames(pvt->dec)) {
+    WebPAnimDecoderReset(pvt->dec);
+  }
 
-  bmp.data = WebPDecodeRGBA(pvt->data, pvt->data_len, &bmp.width, &bmp.height);
-  if (bmp.data == NULL) {
-    imv_log(IMV_ERROR, "libwebp: failed to decode image\n");
+  uint8_t *buf;
+  int timestamp;
+
+  if (!WebPAnimDecoderGetNext(pvt->dec, &buf, &timestamp)) {
+    imv_log(IMV_ERROR, "libwebp: failed to get next frame\n");
     return;
   }
+
+  *frametime = timestamp - pvt->prev_timestamp;
+  pvt->prev_timestamp = timestamp;
+
+  struct imv_bitmap bmp = imv_bitmap_alloc(
+      pvt->anim_info.canvas_width, pvt->anim_info.canvas_height);
+  if (!bmp.data) {
+    return;
+  }
+
+  memcpy(bmp.data, buf, imv_bitmap_size(bmp));
 
   *img = imv_image_create_from_bitmap(bmp);
 }
 
 static const struct imv_source_vtable vtable = {
-  .load_first_frame = first_frame,
-  .free = free_private,
+  .load_first_frame = next_frame,
+  .load_next_frame = next_frame,
+  .free = free_private
 };
 
 static enum backend_result open_memory_internal(struct private priv,
                                                 struct imv_source **src)
 {
-  if (priv.data == NULL) {
+  if (priv.webp_data.bytes == NULL) {
     return BACKEND_BAD_PATH;
   }
 
-  if (WebPGetInfo(priv.data, priv.data_len, NULL, NULL) != true) {
-    imv_log(IMV_DEBUG, "libwebp: error interpreting file header as webp\n");
+  WebPAnimDecoderOptions opt;
+  if (!WebPAnimDecoderOptionsInit(&opt)) {
+    imv_log(IMV_DEBUG, "libwebp: WebPAnimDecoderOptionsInit() failed\n");
+    return BACKEND_ERROR;
+  }
+  opt.color_mode = MODE_RGBA;
+
+  priv.dec = WebPAnimDecoderNew(&priv.webp_data, &opt);
+  if (!priv.dec) {
+    imv_log(IMV_DEBUG, "libwebp: error interpreting file as webp\n");
     return BACKEND_UNSUPPORTED;
   }
+
+  WebPAnimDecoderGetInfo(priv.dec, &priv.anim_info);
 
   struct private *pvt = calloc(1, sizeof *pvt);
   *pvt = priv;
@@ -83,7 +112,11 @@ static enum backend_result open_memory_internal(struct private priv,
 static enum backend_result open_memory(void *data, size_t data_len, struct imv_source **src)
 {
   imv_log(IMV_DEBUG, "libwebp: open_memory called\n");
-  return open_memory_internal((struct private){data, data_len, false }, src);
+  struct private priv = {
+    .webp_data = { .bytes = data, .size = data_len },
+    .is_mmaped = false
+  };
+  return open_memory_internal(priv, src);
 }
 
 static enum backend_result open_path(const char *path, struct imv_source **src)
@@ -106,8 +139,9 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
     imv_log(IMV_ERROR, "libwebp: failed to map file into memory\n");
     goto close;
   }
-  priv.data = data;
-  priv.data_len = data_len;
+
+  priv.webp_data.bytes = data;
+  priv.webp_data.size = data_len;
   priv.is_mmaped = true;
 
 close:
