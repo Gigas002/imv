@@ -100,6 +100,15 @@ static void test_open_png_file(void **state)
 }
 #endif
 
+#ifdef IMV_BACKEND_LIBWEBP
+extern unsigned char sample_webp[];
+extern unsigned int sample_webp_len;
+static void test_open_webp_file(void **state)
+{
+  test_opening_sample_from_memory(*state, sample_webp, sample_webp_len, 0);
+}
+#endif
+
 #ifdef IMV_BACKEND_LIBJPEG
 extern unsigned char sample_jpeg[];
 extern unsigned int sample_jpeg_len;
@@ -128,6 +137,9 @@ int main(void)
 #endif
 #ifdef IMV_BACKEND_LIBPNG
       cmocka_unit_test(test_open_png_file),
+#endif
+#ifdef IMV_BACKEND_LIBWEBP
+      cmocka_unit_test(test_open_webp_file),
 #endif
 #ifdef IMV_BACKEND_LIBJPEG
       cmocka_unit_test(test_open_jpeg_file),
