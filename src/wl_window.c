@@ -106,9 +106,12 @@ static bool set_cursor(struct imv_window *window, const char *name) {
   if (!cursor || !cursor->image_count) {
     return false;
   }
+  assert(cursor->images[0]);
+
   window->pointer.cursor_image = cursor->images[0];
   struct wl_buffer *cursor_buffer =
       wl_cursor_image_get_buffer(window->pointer.cursor_image);
+  assert(cursor_buffer);
 
   wl_surface_attach(window->pointer.surface, cursor_buffer, 0, 0);
   wl_surface_set_buffer_scale(window->pointer.surface, window->scale);
@@ -124,7 +127,7 @@ static void reload_cursor_theme(struct imv_window *window) {
   const char *xcursor_size = getenv("XCURSOR_SIZE");
   int size;
   if (!xcursor_size || !(size = atoi(xcursor_size))) {
-    imv_log(IMV_WARNING, "Couldn't determine cursor size, defaulting to 24");
+    imv_log(IMV_WARNING, "Couldn't determine cursor size, defaulting to 24\n");
     size = 24;
   }
   const char *theme_name = getenv("XCURSOR_THEME");
@@ -139,7 +142,9 @@ static void reload_cursor_theme(struct imv_window *window) {
     window->pointer.surface = wl_compositor_create_surface(window->wl_compositor);
   }
   if (!set_cursor(window, "default")) {
-    imv_log(IMV_WARNING, "No default cursor shape");
+    imv_log(IMV_WARNING,
+        "Couldn't determine default cursor shape, ensure your XCURSOR_SIZE, "
+        "XCURSOR_THEME, and XCURSOR_PATH variables are set correctly\n");
   }
 }
 
@@ -313,6 +318,11 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
   (void)surface;
 
   struct imv_window *window = data;
+  if (!window->pointer.cursor_image) {
+    imv_log(IMV_WARNING,
+        "Cursor image is not set, the displayed cursor may be incorrect\n");
+    return;
+  }
 
   wl_pointer_set_cursor(pointer, serial,
                         window->pointer.surface,
