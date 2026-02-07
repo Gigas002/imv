@@ -178,6 +178,9 @@ struct imv {
   /* list of startup commands to be run on launch, after loading the config */
   struct list *startup_commands;
 
+  /* list of startup commands to be run when the image changes */
+  struct list *image_change_commands;
+
   /* the user-specified format strings for the overlay and window title */
   char *title_text;
 
@@ -582,6 +585,7 @@ struct imv *imv_create(void)
   imv->overlay.background_alpha = 195;
   imv->overlay.position_at_bottom = false;
   imv->startup_commands = list_create();
+  imv->image_change_commands = list_create();
 
   imv_command_register(imv->commands, "quit", &command_quit);
   imv_command_register(imv->commands, "pan", &command_pan);
@@ -686,6 +690,7 @@ void imv_free(struct imv *imv)
   backends_free(imv->backends);
 
   list_free(imv->startup_commands);
+  list_free(imv->image_change_commands);
 
   free(imv);
 }
@@ -889,7 +894,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
   int o;
 
  /* TODO getopt_long */
-  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:w:W:H:V")) != -1) {
+  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:C:w:W:H:V")) != -1) {
     switch(o) {
       case 'f': imv->start_fullscreen = true;                    break;
       case 'r': imv->recursive_load = true;                      break;
@@ -943,6 +948,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
         }
         break;
       case 'c': list_append(imv->startup_commands, optarg); break;
+      case 'C': list_append(imv->image_change_commands, optarg); break;
       case 'w': parse_window_title(imv, optarg); break;
       case 'i': parse_app_id(imv, optarg); break;
       case '?':
@@ -1310,6 +1316,11 @@ static void handle_new_image(struct imv *imv, struct imv_image *image, int frame
   /* If this is an animated image, we should kick off loading the next frame */
   if (imv->current_source && frametime) {
     imv_source_async_load_next_frame(imv->current_source);
+  }
+
+  /* Push image change commands into the event queue */
+  for (size_t i = 0; i < imv->image_change_commands->len; ++i) {
+    command_callback(imv->image_change_commands->items[i], imv);
   }
 }
 

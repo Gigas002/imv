@@ -41,6 +41,10 @@ Options
 	option can be used multiple times. Commands are run in the order that they
 	have been passed to imv.
 
+*-C* <command>:: Specify a command to be run on each image change. This option
+    can be used multiple times. Commands are run in the order that they have
+    been passed to imv.
+
 *-d*::
 	Start with overlay visible.
 
