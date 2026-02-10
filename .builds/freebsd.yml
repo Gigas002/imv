@@ -26,9 +26,8 @@ sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
   # FreeBSD's libheif is outdated and contains functions without prototypes in
-  # its headers
+  # its headers and type redefintions
   # FreeBSD does not have a qoi package
-  # TODO: Add -Dwerror=true back once other builders pick up CMocka 2
   - meson: |
-      meson setup imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib' -Dqoi=disabled -Dc_args='-Wno-strict-prototypes'
+      meson setup imv build -D auto_features=enabled -D c_link_args='-L/usr/local/lib' -Dwerror=true -Dqoi=disabled -Dc_args='-Wno-strict-prototypes -Wno-typedef-redefinition'
       ninja -C build test
