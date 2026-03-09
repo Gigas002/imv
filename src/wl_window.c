@@ -19,25 +19,27 @@
 #include <EGL/egl.h>
 #include <GL/gl.h>
 #include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "pointer-gestures-unstable-v1-client-protocol.h"
 
 #define imv_min(a,b) ((a) > (b) ? (b) : (a))
 
 struct imv_window {
-  struct wl_display    *wl_display;
-  struct wl_registry   *wl_registry;
+  struct wl_display *wl_display;
+  struct wl_registry *wl_registry;
   struct wl_compositor *wl_compositor;
-  struct wl_surface    *wl_surface;
-  struct xdg_wm_base   *wl_xdg;
-  struct xdg_surface   *wl_xdg_surface;
-  struct xdg_toplevel  *wl_xdg_toplevel;
-  struct wl_seat       *wl_seat;
-  struct wl_keyboard   *wl_keyboard;
-  struct wl_pointer    *wl_pointer;
-  struct wl_shm        *wl_shm;
-  EGLDisplay           egl_display;
-  EGLContext           egl_context;
-  EGLSurface           egl_surface;
+  struct wl_surface *wl_surface;
+  struct xdg_wm_base *wl_xdg;
+  struct xdg_surface *wl_xdg_surface;
+  struct xdg_toplevel *wl_xdg_toplevel;
+  struct zxdg_decoration_manager_v1 *decoration_manager;
+  struct wl_seat *wl_seat;
+  struct wl_keyboard *wl_keyboard;
+  struct wl_pointer *wl_pointer;
+  struct wl_shm *wl_shm;
+  EGLDisplay egl_display;
+  EGLContext egl_context;
+  EGLSurface egl_surface;
   struct wl_egl_window *egl_window;
 
   bool xdg_configured;
@@ -685,6 +687,9 @@ static void on_global(void *data, struct wl_registry *registry, uint32_t id,
   } else if (!strcmp(interface, zwp_pointer_gestures_v1_interface.name)) {
     window->gestures.interface = wl_registry_bind(
       registry, id, &zwp_pointer_gestures_v1_interface, 3);
+  } else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name)) {
+    window->decoration_manager = wl_registry_bind(
+      registry, id, &zxdg_decoration_manager_v1_interface, 1);
   }
 }
 
@@ -891,6 +896,15 @@ static void create_window(struct imv_window *window, int width, int height,
   xdg_toplevel_set_title(window->wl_xdg_toplevel, title);
   xdg_toplevel_set_app_id(window->wl_xdg_toplevel, app_id);
 
+  if (window->decoration_manager) {
+    struct zxdg_toplevel_decoration_v1 *decoration =
+      zxdg_decoration_manager_v1_get_toplevel_decoration(
+        window->decoration_manager,
+        window->wl_xdg_toplevel);
+    zxdg_toplevel_decoration_v1_set_mode(
+      decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+  }
+
   window->egl_window = wl_egl_window_create(window->wl_surface, width, height);
   window->egl_surface = eglCreateWindowSurface(window->egl_display, config, window->egl_window, NULL);
   eglMakeCurrent(window->egl_display, window->egl_surface, window->egl_surface, window->egl_context);
@@ -938,6 +952,9 @@ static void shutdown_wayland(struct imv_window *window)
   }
   if (window->wl_xdg) {
     xdg_wm_base_destroy(window->wl_xdg);
+  }
+  if (window->decoration_manager) {
+    zxdg_decoration_manager_v1_destroy(window->decoration_manager);
   }
   if (window->egl_window) {
     wl_egl_window_destroy(window->egl_window);

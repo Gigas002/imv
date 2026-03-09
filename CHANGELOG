@@ -10,6 +10,7 @@ UNRELEASED
 * Add new '-V' flag to enable verbose logs
 * Fix crash when default cursor shape couldn't be determined
 * Add new '-C' that allows running a command each time a new image is displayed
+* Request server-side decorations on Wayland
 
 v5.0.1 - 2025-11-27
 -------------------

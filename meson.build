@@ -105,6 +105,11 @@ if build_wayland
   targets_wayland = [
     wl_mod.scan_xml(wl_mod.find_protocol('xdg-shell')),
     wl_mod.scan_xml(wl_mod.find_protocol(
+      'xdg-decoration',
+      state: 'unstable',
+      version: 1,
+    )),
+    wl_mod.scan_xml(wl_mod.find_protocol(
       'pointer-gestures',
       state: 'unstable',
       version: 1,
