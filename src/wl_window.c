@@ -1126,7 +1126,10 @@ void imv_window_wait_for_event(struct imv_window *window, double timeout)
   }
 
   if (fds[0].revents & POLLIN) {
-    wl_display_read_events(window->wl_display);
+    if (wl_display_read_events(window->wl_display) != 0) {
+      imv_log(IMV_ERROR, "Failed to read compositor events. Aborting.\n");
+      abort();
+    }
   } else {
     wl_display_cancel_read(window->wl_display);
   }
@@ -1140,7 +1143,10 @@ void imv_window_push_event(struct imv_window *window, struct imv_event *e)
 
 void imv_window_pump_events(struct imv_window *window, imv_event_handler handler, void *data)
 {
-  wl_display_dispatch_pending(window->wl_display);
+  if (wl_display_dispatch_pending(window->wl_display) < 0) {
+    imv_log(IMV_ERROR, "Failed to dispatch compositor events. Aborting.\n");
+    abort();
+  }
 
   while (1) {
     struct imv_event e;
