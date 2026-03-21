@@ -221,7 +221,7 @@ imv comes with several binds configured by default
 	Toggle overlay
 
 *p*::
-	Print current image to stdout
+	Print path of current image to stdout
 
 *Up arrow*::
 	Zoom in
