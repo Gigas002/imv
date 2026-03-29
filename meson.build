@@ -101,20 +101,25 @@ if build_wayland
     cc.find_library('rt'),
   ]
 
-  wl_mod = import('unstable-wayland')
-  targets_wayland = [
-    wl_mod.scan_xml(wl_mod.find_protocol('xdg-shell')),
-    wl_mod.scan_xml(wl_mod.find_protocol(
-      'xdg-decoration',
-      state: 'unstable',
-      version: 1,
-    )),
-    wl_mod.scan_xml(wl_mod.find_protocol(
-      'pointer-gestures',
-      state: 'unstable',
-      version: 1,
-    )),
+  wl_protos = dependency('wayland-protocols')
+  wl_scanner = find_program('wayland-scanner', native: true)
+  proto_dir = wl_protos.get_variable('pkgdatadir')
+
+  scan_h = generator(wl_scanner,
+    output: '@BASENAME@-client-protocol.h',
+    arguments: ['client-header', '@INPUT@', '@OUTPUT@'])
+
+  scan_c = generator(wl_scanner,
+    output: '@BASENAME@-protocol.c',
+    arguments: ['private-code', '@INPUT@', '@OUTPUT@'])
+
+  protocols = [
+    proto_dir / 'stable/xdg-shell/xdg-shell.xml',
+    proto_dir / 'unstable/xdg-decoration/xdg-decoration-unstable-v1.xml',
+    proto_dir / 'unstable/pointer-gestures/pointer-gestures-unstable-v1.xml',
   ]
+
+  targets_wayland = [scan_h.process(protocols), scan_c.process(protocols)]
 
   enabled_window_systems += 'wayland'
 endif
