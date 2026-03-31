@@ -299,7 +299,7 @@ static void keyboard_repeat(void *data, struct wl_keyboard *keyboard,
   (void)keyboard;
   struct imv_window *window = data;
   window->repeat_delay = delay;
-  window->repeat_interval = 1000 / rate;
+  window->repeat_interval = rate == 0 ? 0 : 1000 / rate;
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
