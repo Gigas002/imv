@@ -384,7 +384,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - `fn merge(base: Config, overlay: Config) -> Config` — overlay wins per-field
   - Write `config/tests.rs`: round-trip from TOML string, missing keys keep defaults, unknown keys ignored.
 
-- [ ] **1.3** Implement `imgvwr::cli`:
+- [x] **1.3** Implement `imgvwr::cli`:
   - `clap::Parser` struct: positional `paths: Vec<PathBuf>` + `--config <path>: Option<PathBuf>`
   - No other options.
   - Write `cli/tests.rs`: parse no args, parse `--config foo.toml`, parse file paths.
@@ -395,13 +395,13 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 2 — Image loading
 
-- [ ] **2.1** Implement `libimgvwr::loader`:
+- [x] **2.1** Implement `libimgvwr::loader`:
   - `pub fn load(path: &Path) -> Result<DynamicImage, LoadError>` — wraps `image::open()`
   - `LoadError` enum: `Io(std::io::Error)`, `Decode(image::ImageError)`, `UnsupportedFormat`
   - No async; single-threaded blocking load (sufficient for an image viewer — one image at a time).
   - Write `loader/tests.rs`: embed `include_bytes!("../../tests/fixtures/4x4.png")`, call `load()` from `tempfile`, assert width = 4 height = 4; test `UnsupportedFormat` on fake extension.
 
-- [ ] **2.2** Add test fixture: `libimgvwr/tests/fixtures/4x4.png` (4×4 RGBA white PNG). Also add `4x4.jpg`, `4x4.webp` for future feature tests; these are used only when respective features are enabled in tests.
+- [x] **2.2** Add test fixture: `libimgvwr/tests/fixtures/4x4.png` (4×4 RGBA white PNG). Format-specific fixtures (`4x4.jpg`, `4x4.webp`, `4x4.avif`, `4x4.jxl`) are added in Phase 8 alongside their feature steps.
 
 **Verify**: `cargo test -p libimgvwr --features png` passes. `--no-default-features` compiles (loader returns `UnsupportedFormat` for all paths).
 
@@ -543,9 +543,10 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 Each sub-step is independent; do them in any order.
 
-- [ ] **8.1** `jpeg` feature: verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
-- [ ] **8.2** `webp` feature: same for `4x4.webp`.
-- [ ] **8.3** `avif` feature: verify system `libavif` is available in CI; test `4x4.avif`.
+- [ ] **8.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
+- [ ] **8.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
+- [ ] **8.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
+- [ ] **8.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §9).
 - [ ] **8.4** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
 - [ ] **8.5** Verify `--all-features` compiles and tests pass.
 
