@@ -14,7 +14,7 @@ jobs:
   test-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -40,7 +40,7 @@ jobs:
         run: |
           cargo llvm-cov --all-features -p imgvwr --lcov --output-path lcov-imgvwr.info
       - name: Upload libimgvwr coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./lcov-libimgvwr.info
           flags: libimgvwr
@@ -50,7 +50,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload imgvwr coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./lcov-imgvwr.info
           flags: imgvwr
