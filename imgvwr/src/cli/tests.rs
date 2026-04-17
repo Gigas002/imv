@@ -17,10 +17,13 @@ fn config_flag_is_parsed() {
 #[test]
 fn positional_paths_are_collected() {
     let cli = Cli::parse_from(["imgvwr", "a.png", "b.jpg"]);
-    assert_eq!(cli.paths, vec![
-        std::path::PathBuf::from("a.png"),
-        std::path::PathBuf::from("b.jpg"),
-    ]);
+    assert_eq!(
+        cli.paths,
+        vec![
+            std::path::PathBuf::from("a.png"),
+            std::path::PathBuf::from("b.jpg"),
+        ]
+    );
 }
 
 #[test]
