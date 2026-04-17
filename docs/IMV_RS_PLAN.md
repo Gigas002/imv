@@ -476,7 +476,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - On `xdg_toplevel::close_requested`: set a shutdown flag
   - No rendering in this module — just surface management and event collection
 
-- [ ] **5.4** `libimgvwr::keybinds`:
+- [x] **5.4** `libimgvwr::keybinds`:
   - `Action` enum: `Quit`, `RotateLeft`, `RotateRight`
   - `fn keysym_from_str(s: &str) -> Result<Keysym, KeybindError>` — wraps `xkbcommon::xkb::keysym_from_name`; exported so `imgvwr::config` can use it to validate and resolve keybinds at startup
   - `KeybindMap { inner: HashMap<Keysym, Action> }` — constructed by `imgvwr::main` from already-resolved keysyms
