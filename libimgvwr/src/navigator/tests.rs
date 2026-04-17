@@ -1,5 +1,3 @@
-use std::fs::File;
-
 use tempfile::tempdir;
 
 use super::*;
@@ -7,7 +5,7 @@ use super::*;
 #[cfg(feature = "png")]
 fn make_png_files(dir: &std::path::Path, names: &[&str]) {
     for name in names {
-        File::create(dir.join(name)).unwrap();
+        std::fs::File::create(dir.join(name)).unwrap();
     }
 }
 
@@ -64,8 +62,8 @@ fn empty_dir_returns_error() {
 #[test]
 fn non_image_files_are_excluded() {
     let dir = tempdir().unwrap();
-    File::create(dir.path().join("readme.txt")).unwrap();
-    File::create(dir.path().join("image.png")).unwrap();
+    std::fs::File::create(dir.path().join("readme.txt")).unwrap();
+    std::fs::File::create(dir.path().join("image.png")).unwrap();
     let nav = Navigator::from_path(dir.path()).unwrap();
     assert_eq!(nav.paths.len(), 1);
     assert_eq!(nav.current().file_name().unwrap(), "image.png");
