@@ -9,7 +9,8 @@ mod tests;
 
 use std::collections::HashMap;
 
-use xkbcommon::xkb::{self, KEYSYM_NO_FLAGS, Keysym};
+pub use xkbcommon::xkb::Keysym;
+use xkbcommon::xkb::{self, KEYSYM_NO_FLAGS};
 
 /// Actions that can be triggered by a key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

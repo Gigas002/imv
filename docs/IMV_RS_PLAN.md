@@ -490,7 +490,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 6 — Event loop and integration
 
-- [ ] **6.1** Implement `imgvwr::main` event loop:
+- [x] **6.1** Implement `imgvwr::main` event loop:
   - Init: parse CLI, load config, create `Navigator`, load first image, init `ViewportState`, init `WaylandState`
   - Render loop skeleton:
     ```
@@ -509,12 +509,12 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - On pointer press + motion: `viewport.pan(dx, dy)` + dirty
   - On left/right arrow key (hardcoded keysyms `XK_Left`, `XK_Right`): `navigator.prev()/next()`, load new image, `viewport.reset()`, dirty
 
-- [ ] **6.2** `wayland.commit_frame(&pixels, w, h)`:
+- [x] **6.2** `wayland.commit_frame(&pixels, w, h)`:
   - Write `pixels` to `ShmPool` (resize pool if needed)
   - `wl_shm.create_pool` → `pool.create_buffer(w, h, stride, ARGB8888)` → `wl_surface.attach(buffer)` → `damage_buffer(0,0,w,h)` → `wl_surface.commit()`
   - Destroy previous `wl_buffer` after commit (or double-buffer)
 
-- [ ] **6.3** When `decorations` feature is enabled and `config.window.decorations = true`:
+- [x] **6.3** When `decorations` feature is enabled and `config.window.decorations = true`:
   - Set window title to `"{filename} — imgvwr"` via `xdg_toplevel.set_title`
   - Request server-side decorations via `zxdg_decoration_manager_v1`
   - When feature is disabled: `set_title` is never called; no `zxdg_decoration_manager_v1` binding

@@ -13,9 +13,16 @@ pub mod shm;
 
 use std::io;
 
+#[cfg(feature = "decorations")]
+use tracing::warn;
+use tracing::{debug, info};
+
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
-    protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_surface},
+    protocol::{
+        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_shm_pool, wl_surface,
+    },
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use xkbcommon::xkb::Keysym;
@@ -25,7 +32,10 @@ use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
 
-use crate::wayland::keyboard::{KeyboardState, key_event, update_keymap};
+use crate::wayland::{
+    keyboard::{KeyboardState, key_event, update_keymap},
+    shm::ShmPool,
+};
 
 // ── Input events ────────────────────────────────────────────────────────────
 
@@ -58,6 +68,8 @@ pub struct WaylandState {
 
     #[cfg(feature = "decorations")]
     decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    #[cfg(feature = "decorations")]
+    toplevel_decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
 
     // Surface objects created after the first roundtrip
     surface: Option<wl_surface::WlSurface>,
@@ -91,6 +103,8 @@ impl WaylandState {
             seat: None,
             #[cfg(feature = "decorations")]
             decoration_manager: None,
+            #[cfg(feature = "decorations")]
+            toplevel_decoration: None,
             surface: None,
             xdg_surface: None,
             xdg_toplevel: None,
@@ -133,6 +147,10 @@ pub struct WaylandContext {
     /// Public Wayland state — surfaces, globals, pending events, flags.
     pub state: WaylandState,
     event_queue: EventQueue<WaylandState>,
+    /// SHM pool backing the pixel buffer. Created on first commit; resized as needed.
+    shm_pool: Option<ShmPool>,
+    /// The `wl_buffer` attached in the previous frame. Destroyed before each new commit.
+    prev_buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl WaylandContext {
@@ -140,7 +158,11 @@ impl WaylandContext {
     ///
     /// Performs two roundtrips: one to enumerate globals, one to receive the
     /// initial `xdg_toplevel::configure`.
-    pub fn connect(initial_size: (u32, u32)) -> io::Result<Self> {
+    pub fn connect(initial_size: (u32, u32), use_decorations: bool) -> io::Result<Self> {
+        // Suppress unused-variable lint when the `decorations` feature is off.
+        #[cfg(not(feature = "decorations"))]
+        let _ = use_decorations;
+
         let conn = Connection::connect_to_env()
             .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, e))?;
         let mut event_queue = conn.new_event_queue::<WaylandState>();
@@ -176,8 +198,15 @@ impl WaylandContext {
         toplevel.set_app_id("imgvwr".to_string());
 
         #[cfg(feature = "decorations")]
-        if let Some(mgr) = &state.decoration_manager {
-            let _deco = mgr.get_toplevel_decoration(&toplevel, &qh, ());
+        if use_decorations {
+            if let Some(mgr) = &state.decoration_manager {
+                debug!("requesting server-side decorations");
+                state.toplevel_decoration = Some(mgr.get_toplevel_decoration(&toplevel, &qh, ()));
+            } else {
+                warn!(
+                    "compositor does not support zxdg_decoration_manager_v1; no server-side decorations"
+                );
+            }
         }
 
         surface.commit();
@@ -190,11 +219,68 @@ impl WaylandContext {
             .roundtrip(&mut state)
             .map_err(io::Error::other)?;
 
+        let (w, h) = state.window_size;
+        info!(width = w, height = h, "connected to Wayland compositor");
+
         Ok(WaylandContext {
             conn,
             state,
             event_queue,
+            shm_pool: None,
+            prev_buffer: None,
         })
+    }
+
+    /// Write `pixels` (ARGB8888, `w × h × 4` bytes) into a Wayland SHM buffer
+    /// and commit it to the surface.
+    pub fn commit_frame(&mut self, pixels: &[u8], w: u32, h: u32) -> io::Result<()> {
+        let size = (w * h * 4) as usize;
+
+        // Create or grow the SHM backing store.
+        match &self.shm_pool {
+            None => self.shm_pool = Some(ShmPool::create(size)?),
+            Some(p) if p.size < size => self.shm_pool.as_mut().unwrap().resize(size)?,
+            _ => {}
+        }
+
+        self.shm_pool.as_mut().unwrap().as_mut_slice()[..size].copy_from_slice(pixels);
+
+        // Build a wl_shm_pool + wl_buffer for this frame.
+        let stride = w as i32 * 4;
+        let wl_pool = {
+            let fd = self.shm_pool.as_ref().unwrap().fd();
+            let wl_shm = self
+                .state
+                .wl_shm()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "wl_shm not bound"))?;
+            wl_shm.create_pool(fd, size as i32, self.state.qh(), ())
+        };
+        let buffer = wl_pool.create_buffer(
+            0,
+            w as i32,
+            h as i32,
+            stride,
+            wl_shm::Format::Argb8888,
+            self.state.qh(),
+            (),
+        );
+        wl_pool.destroy();
+
+        // Destroy the previous frame's buffer before the new one takes the surface slot.
+        if let Some(prev) = self.prev_buffer.take() {
+            prev.destroy();
+        }
+
+        let surface = self
+            .state
+            .surface()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "surface not available"))?;
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, w as i32, h as i32);
+        surface.commit();
+
+        self.prev_buffer = Some(buffer);
+        self.flush()
     }
 
     /// Flush the outgoing Wayland socket buffer.
@@ -213,6 +299,21 @@ impl WaylandContext {
             .blocking_dispatch(&mut self.state)
             .map(|_| ())
             .map_err(io::Error::other)
+    }
+
+    /// Set the XDG toplevel window title.
+    ///
+    /// Only available when the `decorations` feature is enabled. The title is
+    /// buffered and sent on the next Wayland socket flush (i.e. the next
+    /// `dispatch` call or `commit_frame`).
+    #[cfg(feature = "decorations")]
+    pub fn set_title(&mut self, title: &str) {
+        if let Some(toplevel) = &self.state.xdg_toplevel {
+            debug!(title, "setting window title");
+            toplevel.set_title(title.to_string());
+        } else {
+            warn!("set_title called but xdg_toplevel is not yet initialised");
+        }
     }
 }
 
@@ -250,6 +351,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             }
             #[cfg(feature = "decorations")]
             "zxdg_decoration_manager_v1" => {
+                info!("compositor supports server-side decorations");
                 state.decoration_manager = Some(registry.bind(name, version.min(1), qh, ()));
             }
             _ => {}
@@ -461,15 +563,41 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for WaylandState {
                 };
                 let new_size = (w as u32, h as u32);
                 if new_size != state.window_size {
+                    debug!(width = new_size.0, height = new_size.1, "window resized");
                     state.window_size = new_size;
                 }
                 state.needs_redraw = true;
             }
             xdg_toplevel::Event::Close => {
+                info!("compositor requested window close");
                 state.closed = true;
             }
             _ => {}
         }
+    }
+}
+
+impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_shm_pool::WlShmPool,
+        _: wl_shm_pool::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        _: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 
