@@ -459,7 +459,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - `fn as_mut_slice(&mut self) -> &mut [u8]`
   - Expose `fd()` for passing to `wl_shm.create_pool`
 
-- [ ] **5.2** Implement `libimgvwr::wayland::keyboard`:
+- [x] **5.2** Implement `libimgvwr::wayland::keyboard`:
   - Wrap `xkbcommon::xkb::{Context, Keymap, State}` lifecycle
   - `fn update_keymap(fd: RawFd, size: u32) -> Result<KeyboardState>`
   - `fn key_event(state: &mut KeyboardState, key: u32, key_state: wl_keyboard::KeyState) -> Option<KeySym>`
