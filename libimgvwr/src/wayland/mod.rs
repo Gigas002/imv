@@ -197,6 +197,14 @@ impl WaylandContext {
         })
     }
 
+    /// Write `pixels` (ARGB8888, `w × h × 4` bytes) into a Wayland SHM buffer
+    /// and commit it to the surface.
+    ///
+    /// Implemented in Phase 6.2.
+    pub fn commit_frame(&mut self, _pixels: &[u8], _w: u32, _h: u32) -> io::Result<()> {
+        todo!("Phase 6.2: SHM buffer commit")
+    }
+
     /// Flush the outgoing Wayland socket buffer.
     pub fn flush(&self) -> io::Result<()> {
         self.conn

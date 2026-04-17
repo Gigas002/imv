@@ -490,7 +490,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 6 — Event loop and integration
 
-- [ ] **6.1** Implement `imgvwr::main` event loop:
+- [x] **6.1** Implement `imgvwr::main` event loop:
   - Init: parse CLI, load config, create `Navigator`, load first image, init `ViewportState`, init `WaylandState`
   - Render loop skeleton:
     ```

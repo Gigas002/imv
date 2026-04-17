@@ -31,6 +31,31 @@ impl Config {
         toml::from_str(&content).map_err(|e: toml::de::Error| e.into())
     }
 
+    /// Load and merge all config sources in priority order:
+    /// built-in defaults → system → user (XDG or HOME) → `override_path`.
+    pub fn load_merged(override_path: Option<&std::path::Path>) -> Config {
+        let mut config = Config::default();
+        let system = Config::get_system_path();
+        if system.exists()
+            && let Ok(c) = Config::load(&system)
+        {
+            config = Config::merge(config, c);
+        }
+        let user = Config::get_xdg_path().or_else(|_| Config::get_home_path());
+        if let Ok(p) = user
+            && p.exists()
+            && let Ok(c) = Config::load(&p)
+        {
+            config = Config::merge(config, c);
+        }
+        if let Some(path) = override_path
+            && let Ok(c) = Config::load(&path.to_path_buf())
+        {
+            config = Config::merge(config, c);
+        }
+        config
+    }
+
     pub fn get_xdg_path() -> Result<PathBuf, Box<dyn Error>> {
         env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)

@@ -1,6 +1,16 @@
-#[allow(dead_code)]
+mod app;
 mod cli;
-#[allow(dead_code)]
 mod config;
+mod settings;
 
-fn main() {}
+use clap::Parser;
+
+use config::Config;
+use settings::AppSettings;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = cli::Cli::parse();
+    let config = Config::load_merged(cli.config.as_deref());
+    let settings = AppSettings::resolve(&cli, &config);
+    app::run(settings)
+}
