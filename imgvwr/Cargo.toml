@@ -25,4 +25,4 @@ libimgvwr = { path = "../libimgvwr", default-features = false }
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false }
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"

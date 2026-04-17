@@ -452,20 +452,20 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 5 — Wayland core
 
-- [ ] **5.1** Implement `libimgvwr::wayland::shm`:
+- [x] **5.1** Implement `libimgvwr::wayland::shm`:
   - `ShmPool { fd: OwnedFd, mmap: MmapMut, size: usize }` — created with `rustix::fs::memfd_create`
   - `fn create(size: usize) -> Result<ShmPool>` — create memfd, `ftruncate`, `mmap`
   - `fn resize(&mut self, new_size: usize)` — `ftruncate` + remap
   - `fn as_mut_slice(&mut self) -> &mut [u8]`
   - Expose `fd()` for passing to `wl_shm.create_pool`
 
-- [ ] **5.2** Implement `libimgvwr::wayland::keyboard`:
+- [x] **5.2** Implement `libimgvwr::wayland::keyboard`:
   - Wrap `xkbcommon::xkb::{Context, Keymap, State}` lifecycle
   - `fn update_keymap(fd: RawFd, size: u32) -> Result<KeyboardState>`
   - `fn key_event(state: &mut KeyboardState, key: u32, key_state: wl_keyboard::KeyState) -> Option<KeySym>`
   - Return `xkbcommon::xkb::Keysym` — keybind module will map these
 
-- [ ] **5.3** Implement `libimgvwr::wayland` (main `WaylandState`):
+- [x] **5.3** Implement `libimgvwr::wayland` (main `WaylandState`):
   - Connect to display, get registry, bind globals:
     - `wl_compositor`, `wl_shm`, `xdg_wm_base`, `wl_seat`
     - `zxdg_decoration_manager_v1` only when `#[cfg(feature = "decorations")]`
@@ -476,7 +476,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - On `xdg_toplevel::close_requested`: set a shutdown flag
   - No rendering in this module — just surface management and event collection
 
-- [ ] **5.4** `libimgvwr::keybinds`:
+- [x] **5.4** `libimgvwr::keybinds`:
   - `Action` enum: `Quit`, `RotateLeft`, `RotateRight`
   - `fn keysym_from_str(s: &str) -> Result<Keysym, KeybindError>` — wraps `xkbcommon::xkb::keysym_from_name`; exported so `imgvwr::config` can use it to validate and resolve keybinds at startup
   - `KeybindMap { inner: HashMap<Keysym, Action> }` — constructed by `imgvwr::main` from already-resolved keysyms
