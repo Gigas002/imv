@@ -465,7 +465,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - `fn key_event(state: &mut KeyboardState, key: u32, key_state: wl_keyboard::KeyState) -> Option<KeySym>`
   - Return `xkbcommon::xkb::Keysym` — keybind module will map these
 
-- [ ] **5.3** Implement `libimgvwr::wayland` (main `WaylandState`):
+- [x] **5.3** Implement `libimgvwr::wayland` (main `WaylandState`):
   - Connect to display, get registry, bind globals:
     - `wl_compositor`, `wl_shm`, `xdg_wm_base`, `wl_seat`
     - `zxdg_decoration_manager_v1` only when `#[cfg(feature = "decorations")]`
