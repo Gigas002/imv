@@ -1,13 +1,12 @@
+#include "navigator.h"
+#include "platform_dummy.h"
+
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <setjmp.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <cmocka.h>
-#include <errno.h>
+#include <stdint.h>
 
-#include "navigator.h"
+#include <cmocka.h>
 
 #define FILENAME1 "example.file.1"
 #define FILENAME2 "example.file.2"
@@ -70,44 +69,40 @@ static void test_navigator_add_remove(void **state)
   imv_navigator_free(nav);
 }
 
+static time_t current_time;
+static time_t modified_time;
+
+time_t mocked_time(void) { return current_time; }
+time_t mocked_modified_time(const char *path)
+{
+  (void)path;
+  return modified_time;
+}
+
 static void test_navigator_file_changed(void **state)
 {
-  int fd;
-  struct imv_navigator *nav = imv_navigator_create();
-  struct timespec times[2] = { {0, 0}, {0, 0} };
-
   (void)state;
 
-  fd = open(FILENAME1, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-  if (fd == -1) {
-    imv_navigator_free(nav);
-    (void)unlink(FILENAME1);
-    skip();
-  }
-  assert_false(futimens(fd, times) == -1);
+  mocked_imv_time = mocked_time;
+  mocked_imv_file_last_modified = mocked_modified_time;
+
+  struct imv_navigator *nav = imv_navigator_create();
 
   assert_false(imv_navigator_add(nav, FILENAME1, 0));
   assert_true(imv_navigator_poll_changed(nav));
   assert_false(imv_navigator_poll_changed(nav));
 
-  assert_false(sleep(1));
+  current_time = 1;
+  // Not modified
+  assert_false(imv_navigator_poll_changed(nav));
 
-  fd = open(FILENAME1, O_RDWR);
-  assert_false(fd == -1);
+  modified_time = 1;
+  // Modified but ignored due to stat throttling
+  assert_false(imv_navigator_poll_changed(nav));
 
-  times[0].tv_nsec = UTIME_NOW;
-  times[0].tv_sec = UTIME_NOW;
-  times[1].tv_nsec = UTIME_NOW;
-  times[1].tv_sec = UTIME_NOW;
-  assert_false(futimens(fd, times) == -1);
-
-  /* sleep to ensure we don't hit the poll rate-limiting */
-  sleep(1);
-
+  current_time = 2;
   assert_true(imv_navigator_poll_changed(nav));
 
-  (void)close(fd);
-  (void)unlink(FILENAME1);
   imv_navigator_free(nav);
 }
 
@@ -115,12 +110,11 @@ int main(void)
 {
   (void)test_navigator_add_remove; /* skipped for now */
   const struct CMUnitTest tests[] = {
-    /* cmocka_unit_test(test_navigator_add_remove), */
-    cmocka_unit_test(test_navigator_file_changed),
+      /* cmocka_unit_test(test_navigator_add_remove), */
+      cmocka_unit_test(test_navigator_file_changed),
   };
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }
-
 
 /* vim:set ts=2 sts=2 sw=2 et: */

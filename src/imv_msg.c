@@ -14,6 +14,20 @@ int main(int argc, char **argv)
     return 0;
   }
 
+  char buf[4096] = {0};
+  int len = 0;
+  for (int i = 2; i < argc; ++i) {
+    size_t arg_len = strlen(argv[i]);
+    if (len + arg_len + 1 >= sizeof buf) {
+      fprintf(stderr, "Command cannot be longer than %lu\n", sizeof buf);
+      return 1;
+    }
+    memcpy(buf + len, argv[i], arg_len);
+    len += arg_len;
+    buf[len++] = ' ';
+  }
+  buf[len-1] = '\n';
+
   int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
   assert(sockfd);
 
@@ -27,16 +41,16 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  char buf[4096] = {0};
-  for (int i = 2; i < argc; ++i) {
-    strncat(buf, argv[i], sizeof buf - 1);
-    if (i + 1 < argc) {
-      strncat(buf, " ", sizeof buf - 1);
+  char *pos = buf;
+  while (len > 0) {
+    ssize_t written = write(sockfd, pos, len);
+    if (written == -1) {
+      perror("Failed to write");
+      return 1;
     }
+    pos += written;
+    len -= written;
   }
-  strncat(buf, "\n", sizeof buf - 1);
-
-  write(sockfd, buf, strlen(buf));
   close(sockfd);
   return 0;
 }

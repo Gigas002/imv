@@ -17,6 +17,9 @@ enum backend_result {
 
   /* There's data, but this backend doesn't understand it. */
   BACKEND_UNSUPPORTED = 2,
+
+  /* Catchall for other errors. */
+  BACKEND_ERROR = 3,
 };
 
 /* A backend is responsible for taking a path, or a raw data pointer, and
@@ -46,6 +49,14 @@ struct imv_backend {
    * and src will point to an imv_source instance for the given data.
    */
   enum backend_result (*open_memory)(void *data, size_t len, struct imv_source **src);
+
+  /* Run initialization code before registering the the backend. If successful,
+   * BACKEND_SUCCESS is returned.
+   */
+  enum backend_result (*init)(void);
+
+  /* Uninitialize backend */
+  void (*uninit)(void);
 };
 
 #endif

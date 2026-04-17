@@ -41,11 +41,18 @@ Options
 	option can be used multiple times. Commands are run in the order that they
 	have been passed to imv.
 
+*-C* <command>:: Specify a command to be run on each image change. This option
+    can be used multiple times. Commands are run in the order that they have
+    been passed to imv.
+
 *-d*::
 	Start with overlay visible.
 
 *-f*::
 	Start fullscreen.
+
+*-i* <id>::
+	Set the X11 resource name/wayland app id of the created window.
 
 *-l*::
 	List open files to stdout at exit.
@@ -70,8 +77,20 @@ Options
 *-u* <linear|nearest_neighbour>::
 	Set upscaling method used by imv.
 
+*-w* <windowtitle>::
+    Set window title when starting imv.
+
 *-x*::
 	Disable looping of input paths.
+
+*-V*::
+	Enable verbose logging
+
+*-W* <width>::
+	Initial width of window.
+
+*-H* <height>::
+	Initial height of window.
 
 Commands
 --------
@@ -202,7 +221,7 @@ imv comes with several binds configured by default
 	Toggle overlay
 
 *p*::
-	Print current image to stdout
+	Print path of current image to stdout
 
 *Up arrow*::
 	Zoom in
@@ -325,7 +344,7 @@ imv is written and maintained by Harry Jeffery <me@harry.pm>
 with contributions from other developers.
 
 Full source code and other information can be found at
-<https://github.com/eXeC64/imv>.
+<https://sr.ht/~exec64/imv>.
 
 See Also
 --------

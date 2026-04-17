@@ -5,6 +5,7 @@
 #include "backend.h"
 #include "bitmap.h"
 #include "image.h"
+#include "log.h"
 #include "source_private.h"
 
 struct private {
@@ -21,6 +22,13 @@ static void free_private(void *raw_private)
   free(private);
 }
 
+static void copy_with_stride(unsigned char *dst, const unsigned char *src, int width, int height, int stride) {
+  for (int i = 0; i < height; i++) {
+    memcpy(&dst[i * width * BYTES_PER_CHANNEL], &src[i * stride],
+        width * BYTES_PER_CHANNEL);
+  }
+}
+
 static void load_image(void *raw_private, struct imv_image **image, int *frametime)
 {
   *image = NULL;
@@ -29,18 +37,22 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
   struct private *private = raw_private;
 
   int stride;
-  const uint8_t *data = heif_image_get_plane_readonly(private->img, heif_channel_interleaved, &stride);
+  const uint8_t *data = heif_image_get_plane_readonly(
+      private->img, heif_channel_interleaved, &stride);
 
-  int width = heif_image_get_width(private->img, heif_channel_interleaved);
-  int height = heif_image_get_height(private->img, heif_channel_interleaved);
-  unsigned char *bitmap = malloc(width * height * 4);
-  memcpy(bitmap, data, width * height * 4);
+  struct imv_bitmap bmp = imv_bitmap_alloc(
+      heif_image_get_width(private->img, heif_channel_interleaved),
+      heif_image_get_height(private->img, heif_channel_interleaved));
+  if (!bmp.data) {
+    return;
+  }
 
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
-  bmp->width = width,
-  bmp->height = height,
-  bmp->format = IMV_ABGR;
-  bmp->data = bitmap;
+  if (bmp.width * BYTES_PER_CHANNEL == stride) {
+    memcpy(bmp.data, data, imv_bitmap_size(bmp));
+  } else {
+    copy_with_stride(bmp.data, data, bmp.width, bmp.height, stride);
+  }
+
   *image = imv_image_create_from_bitmap(bmp);
 }
 
@@ -54,10 +66,15 @@ struct heif_error get_primary_image(struct heif_context *ctx, struct heif_image 
   struct heif_image_handle *handle;
   struct heif_error err = heif_context_get_primary_image_handle(ctx, &handle);
   if (err.code != heif_error_Ok) {
+    imv_log(IMV_ERROR, "libheif: failed to get image handle (%s)\n", err.message);
     return err;
   }
 
   err = heif_decode_image(handle, img, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, NULL);
+  if (err.code != heif_error_Ok) {
+    imv_log(IMV_ERROR, "libheif: failed to decode image (%s)\n", err.message);
+  }
+
   heif_image_handle_release(handle);
   return err;
 }
@@ -109,6 +126,22 @@ static enum backend_result open_memory(void *data, size_t len, struct imv_source
   return BACKEND_SUCCESS;
 }
 
+static enum backend_result init(void)
+{
+    struct heif_error err = heif_init(NULL);
+    if (err.code != heif_error_Ok) {
+        imv_log(IMV_ERROR, "libheif: failed to initialize backend (%s)\n", err.message);
+        heif_deinit();
+        return BACKEND_UNSUPPORTED;
+    }
+    return BACKEND_SUCCESS;
+}
+
+static void uninit(void)
+{
+    heif_deinit();
+}
+
 const struct imv_backend imv_backend_libheif = {
   .name = "libheif",
   .description = "ISO/IEC 23008-12:2017 HEIF file format decoder and encoder.",
@@ -116,4 +149,6 @@ const struct imv_backend imv_backend_libheif = {
   .license = "GNU Lesser General Public License",
   .open_path = &open_path,
   .open_memory = &open_memory,
+  .init = &init,
+  .uninit = &uninit,
 };

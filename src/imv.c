@@ -1,6 +1,7 @@
 #include "imv.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
@@ -14,6 +15,7 @@
 #include <wordexp.h>
 
 #include "backend.h"
+#include "backends.h"
 #include "binds.h"
 #include "canvas.h"
 #include "commands.h"
@@ -25,6 +27,7 @@
 #include "log.h"
 #include "navigator.h"
 #include "source.h"
+#include "sys/types.h"
 #include "viewport.h"
 #include "window.h"
 
@@ -116,7 +119,6 @@ struct imv {
   /* dirty state flags */
   bool need_redraw;
   bool need_rescale;
-  bool cache_invalidated;
 
   /* traverse sub-directories for more images */
   bool recursive_load;
@@ -129,6 +131,9 @@ struct imv {
 
   /* read paths from stdin, as opposed to image data */
   bool paths_from_stdin;
+
+  /* minimum log_level to print to stderr */
+  enum imv_log_level log_level;
 
   /* FILE to use when reading paths from stdin */
   FILE *stdin_pipe;
@@ -173,13 +178,19 @@ struct imv {
   /* list of startup commands to be run on launch, after loading the config */
   struct list *startup_commands;
 
+  /* list of startup commands to be run when the image changes */
+  struct list *image_change_commands;
+
   /* the user-specified format strings for the overlay and window title */
   char *title_text;
+
+  /* the user-specified string used as X11 res name or wayland app id */
+  char *app_id;
 
   /* imv subsystems */
   struct imv_binds *binds;
   struct imv_navigator *navigator;
-  struct list *backends;
+  struct backends *backends;
   struct imv_source *current_source;
   struct imv_source *last_source;
   struct imv_commands *commands;
@@ -443,13 +454,12 @@ static void event_handler(void *data, const struct imv_event *e)
       break;
     case IMV_EVENT_RESIZE:
       {
-        const int ww = e->data.resize.width;
-        const int wh = e->data.resize.height;
-        const int bw = e->data.resize.buffer_width;
-        const int bh = e->data.resize.buffer_height;
-        const double scale = e->data.resize.scale;
-        imv_viewport_update(imv->view, ww, wh, bw, bh, imv->current_image, imv->scaling_mode);
-        imv_canvas_resize(imv->canvas, bw, bh, scale);
+        const int w = e->data.resize.buffer_width;
+        const int h = e->data.resize.buffer_height;
+        const double ui_scale = e->data.resize.scale;
+        imv_viewport_update(imv->view, w, h, imv->current_image, imv->scaling_mode);
+        imv_canvas_resize(imv->canvas, w, h);
+        imv_canvas_font(imv->canvas, imv->overlay.font.name, imv->overlay.font.size * ui_scale);
         break;
       }
     case IMV_EVENT_KEYBOARD:
@@ -467,6 +477,17 @@ static void event_handler(void *data, const struct imv_event *e)
         imv_window_get_mouse_position(imv->window, &x, &y);
         imv_viewport_zoom(imv->view, imv->current_image, IMV_ZOOM_MOUSE,
             x, y, -e->data.mouse_scroll.dy);
+      }
+      break;
+    case IMV_EVENT_GESTURE_PINCH:
+      {
+        double x, y;
+        imv_window_get_mouse_position(imv->window, &x, &y);
+        imv_viewport_move(imv->view, e->data.gesture_pinch.dx,
+            e->data.gesture_pinch.dy, imv->current_image);
+        imv_viewport_scale_by(imv->view, imv->current_image, IMV_ZOOM_MOUSE,
+            x, y, e->data.gesture_pinch.scale);
+        imv_viewport_rotate_by(imv->view, e->data.gesture_pinch.rotation);
       }
       break;
     case IMV_EVENT_CUSTOM:
@@ -511,18 +532,20 @@ static bool hex_value_to_alpha(const char* hex, unsigned char *alpha)
 
 static void log_to_stderr(enum imv_log_level level, const char *text, void *data)
 {
-  (void)data;
-  if (level >= IMV_INFO) {
+  struct imv *imv = data;
+  if (level >= imv->log_level) {
     fputs(text, stderr);
   }
 }
 
 struct imv *imv_create(void)
 {
-  /* Attach log to stderr */
-  imv_log_add_log_callback(&log_to_stderr, NULL);
-
   struct imv *imv = calloc(1, sizeof *imv);
+
+  /* Attach log to stderr */
+  imv->log_level = IMV_INFO;
+  imv_log_add_log_callback(&log_to_stderr, imv);
+
   imv->initial_width = 1280;
   imv->initial_height = 720;
   imv->need_redraw = true;
@@ -531,16 +554,16 @@ struct imv *imv_create(void)
   imv->loop_input = true;
   imv->overlay.font.name = strdup("Monospace");
   imv->overlay.font.size = 24;
+  imv->backends = backends_create();
+  if (!imv->backends) {
+    imv_log(IMV_ERROR, "Failed to create backends list.\n");
+    return NULL;
+  }
   imv->binds = imv_binds_create();
   imv->navigator = imv_navigator_create();
-  imv->backends = list_create();
   imv->commands = imv_commands_create();
   imv->console = imv_console_create();
   imv_console_set_command_callback(imv->console, &command_callback, imv);
-  imv->ipc = imv_ipc_create();
-  if (imv->ipc) {
-    imv_ipc_set_command_callback(imv->ipc, &command_callback, imv);
-  }
   imv->title_text = strdup(
       "imv - [${imv_current_index}/${imv_file_count}]"
       " [${imv_width}x${imv_height}] [${imv_scale}%]"
@@ -551,6 +574,7 @@ struct imv *imv_create(void)
       " [${imv_width}x${imv_height}] [${imv_scale}%]"
       " $imv_current_file [$imv_scaling_mode]"
   );
+  imv->app_id = strdup("imv");
   imv->overlay.text_color.r = 255;
   imv->overlay.text_color.g = 255;
   imv->overlay.text_color.b = 255;
@@ -561,6 +585,7 @@ struct imv *imv_create(void)
   imv->overlay.background_alpha = 195;
   imv->overlay.position_at_bottom = false;
   imv->startup_commands = list_create();
+  imv->image_change_commands = list_create();
 
   imv_command_register(imv->commands, "quit", &command_quit);
   imv_command_register(imv->commands, "pan", &command_pan);
@@ -637,6 +662,7 @@ void imv_free(struct imv *imv)
 {
   free(imv->overlay.font.name);
   free(imv->title_text);
+  free(imv->app_id);
   free(imv->overlay.text);
   imv_binds_free(imv->binds);
   imv_navigator_free(imv->navigator);
@@ -661,16 +687,12 @@ void imv_free(struct imv *imv)
     imv_window_free(imv->window);
   }
 
-  list_free(imv->backends);
+  backends_free(imv->backends);
 
   list_free(imv->startup_commands);
+  list_free(imv->image_change_commands);
 
   free(imv);
-}
-
-void imv_install_backend(struct imv *imv, const struct imv_backend *backend)
-{
-  list_append(imv->backends, (void*)backend);
 }
 
 static bool parse_bg(struct imv *imv, const char *bg)
@@ -731,6 +753,28 @@ static bool parse_upscaling_method(struct imv *imv, const char *method)
   return false;
 }
 
+static bool parse_window_title(struct imv *imv, const char *name)
+{
+  if (strcmp(name, "")) {
+    free(imv->title_text);
+    imv->title_text = strdup(name);
+    return true;
+  }
+
+  return false;
+}
+
+static bool parse_app_id(struct imv *imv, const char *id)
+{
+  if (strcmp(id, "")) {
+    free(imv->app_id);
+    imv->app_id = strdup(id);
+    return true;
+  }
+
+  return false;
+}
+
 static bool parse_initial_pan(struct imv *imv, const char *pan_params)
 {
   char *next_val;
@@ -740,6 +784,39 @@ static bool parse_initial_pan(struct imv *imv, const char *pan_params)
   imv->custom_start_pan = true;
   imv->initial_pan_x = (double)val_x / (double)100;
   imv->initial_pan_y = (double)val_y / (double)100;
+  return true;
+}
+
+static void set_cloexec(int fd)
+{
+  int flags = fcntl(fd, F_GETFD);
+  assert(flags != -1);
+  flags |= FD_CLOEXEC;
+  int rc = fcntl(fd, F_SETFD, flags);
+  assert(rc != -1);
+}
+
+static bool parse_initial_width(struct imv *imv, const char *width_value)
+{
+  char *endptr;
+  errno = 0;
+  int val_x = strtol(width_value, &endptr, 10);
+  if(errno != 0 || *endptr != '\0' || endptr == width_value) {
+    return false;
+  }
+  imv->initial_width = val_x;
+  return true;
+}
+
+static bool parse_initial_height(struct imv *imv, const char *height_value)
+{
+  char *endptr;
+  errno = 0;
+  int val_y = strtol(height_value, &endptr, 10);
+  if(errno != 0 || *endptr != '\0' || endptr == height_value) {
+    return false;
+  }
+  imv->initial_height = val_y;
   return true;
 }
 
@@ -770,6 +847,10 @@ static void *load_paths_from_stdin(void *data)
   char buf[PATH_MAX];
   while (fgets(buf, sizeof(buf), imv->stdin_pipe) != NULL) {
     size_t len = strlen(buf);
+    if (len == 0 || len >= PATH_MAX) {
+      imv_log(IMV_ERROR, "Failed to read path from stdin. Aborting.\n");
+      abort();
+    }
     if (buf[len-1] == '\n') {
       buf[--len] = 0;
     }
@@ -795,20 +876,10 @@ static void print_help(struct imv *imv)
   printf("imv %s\nSee manual for usage information.\n", IMV_VERSION);
   puts("This version of imv has been compiled with the following backends:\n");
 
-  for (size_t i = 0; i < imv->backends->len; ++i) {
-    struct imv_backend *backend = imv->backends->items[i];
-    printf("Name: %s\n"
-           "Description: %s\n"
-           "Website: %s\n"
-           "License: %s\n\n",
-           backend->name,
-           backend->description,
-           backend->website,
-           backend->license);
-  }
+  print_backend_infos(imv->backends);
 
   puts("imv's full source code is published under the terms of the MIT\n"
-       "license, and can be found at https://github.com/eXeC64/imv\n"
+       "license, and can be found at https://sr.ht/~exec64/imv\n"
        "\n"
        "imv uses the inih library to parse ini files.\n"
        "See https://github.com/benhoyt/inih for details.\n"
@@ -823,7 +894,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
   int o;
 
  /* TODO getopt_long */
-  while ((o = getopt(argc, argv, "frdxhvlu:s:n:b:t:c:")) != -1) {
+  while ((o = getopt(argc, argv, "frdxhvli:u:s:n:b:t:c:C:w:W:H:V")) != -1) {
     switch(o) {
       case 'f': imv->start_fullscreen = true;                    break;
       case 'r': imv->recursive_load = true;                      break;
@@ -831,6 +902,7 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
       case 'x': imv->loop_input = false;                         break;
       case 'l': imv->list_files_at_exit = true;                  break;
       case 'n': imv->starting_path = optarg;                     break;
+      case 'V': imv->log_level = IMV_DEBUG;                      break;
       case 'h':
         print_help(imv);
         imv->quit = true;
@@ -863,7 +935,22 @@ bool imv_parse_args(struct imv *imv, int argc, char **argv)
           return false;
         }
         break;
+      case 'W':
+        if(!parse_initial_width(imv, optarg)) {
+          imv_log(IMV_ERROR, "Invalid initial width value. Aborting.\n");
+          return false;
+        }
+        break;
+      case 'H':
+        if(!parse_initial_height(imv, optarg)) {
+          imv_log(IMV_ERROR, "Invalid initial height value. Aborting.\n");
+          return false;
+        }
+        break;
       case 'c': list_append(imv->startup_commands, optarg); break;
+      case 'C': list_append(imv->image_change_commands, optarg); break;
+      case 'w': parse_window_title(imv, optarg); break;
+      case 'i': parse_app_id(imv, optarg); break;
       case '?':
         imv_log(IMV_ERROR, "Unknown argument '%c'. Aborting.\n", optopt);
         return false;
@@ -915,6 +1002,11 @@ int imv_run(struct imv *imv)
   if (!setup_window(imv))
     return 1;
 
+  imv->ipc = imv_ipc_create();
+  if (imv->ipc) {
+    imv_ipc_set_command_callback(imv->ipc, &command_callback, imv);
+  }
+
   /* if loading paths from stdin, kick off a thread to do that - we'll receive
    * events back via internal events */
   int *stdin_pipe_fds = NULL;
@@ -930,6 +1022,9 @@ int imv_run(struct imv *imv)
       return 1;
     }
 
+    /* if a child process spawned by imv inherits the write part of the pipe,
+     * load_paths_from_stdin() will not exit until the child dies */
+    set_cloexec(stdin_pipe_fds[1]);
     imv->stdin_pipe = fdopen(stdin_pipe_fds[0], "re");
 
     if (pthread_create(&load_paths_thread, NULL, load_paths_from_stdin, imv)
@@ -942,7 +1037,7 @@ int imv_run(struct imv *imv)
     if (imv->paths_from_stdin) {
       int max_tries = 1000;
       bool is_number = true;
-      for(int i=0; i<strlen(imv->starting_path); ++i) {
+      for(size_t i = 0; i < strlen(imv->starting_path); ++i) {
         if (!isdigit(imv->starting_path[i])) {
           is_number = false;
           break;
@@ -965,7 +1060,7 @@ int imv_run(struct imv *imv)
             cont = false;
           }
         } else {
-          if(imv_navigator_length(imv->navigator) >= index) {
+          if((ssize_t)imv_navigator_length(imv->navigator) >= index) {
             imv_navigator_select_abs(imv->navigator, index);
             cont = false;
           }
@@ -1023,36 +1118,16 @@ int imv_run(struct imv *imv)
 
         enum backend_result result = BACKEND_UNSUPPORTED;
 
-        if (!imv->backends) {
-          imv_log(IMV_ERROR, "No backends installed. Unable to load image.\n");
-        }
+        assert(imv->backends);
 
-        for (size_t i = 0; i < imv->backends->len; ++i) {
-          const struct imv_backend *backend = imv->backends->items[i];
-          if (path_is_stdin) {
-
-            if (!backend->open_memory) {
-              /* memory loading unsupported by backend */
-              continue;
-            }
-
-            result = backend->open_memory(imv->stdin_image_data,
+        if (path_is_stdin) {
+          /* Skip if image failed to load */
+          if (imv->stdin_image_data && imv->stdin_image_data_len) {
+            result = backends_open_memory(imv->backends, imv->stdin_image_data,
                 imv->stdin_image_data_len, &new_source);
-          } else {
-
-            if (!backend->open_path) {
-              /* path loading unsupported by backend */
-              continue;
-            }
-
-            result = backend->open_path(current_path, &new_source);
           }
-          if (result == BACKEND_UNSUPPORTED) {
-            /* Try the next backend */
-            continue;
-          } else {
-            break;
-          }
+        } else {
+          result = backends_open_path(imv->backends, current_path, &new_source);
         }
 
         if (result == BACKEND_SUCCESS) {
@@ -1118,7 +1193,7 @@ int imv_run(struct imv *imv)
     }
 
     /* handle slideshow */
-    if (imv->slideshow.duration != 0.0) {
+    if (imv_viewport_is_playing(imv->view) && imv->slideshow.duration != 0.0) {
       double dt = current_time - last_time;
 
       imv->slideshow.elapsed += dt;
@@ -1194,7 +1269,8 @@ int imv_run(struct imv *imv)
 
 static bool setup_window(struct imv *imv)
 {
-  imv->window = imv_window_create(imv->initial_width, imv->initial_height, "imv");
+  imv->window = imv_window_create(imv->initial_width, imv->initial_height,
+                                  "imv", imv->app_id);
 
   if (!imv->window) {
     imv_log(IMV_ERROR, "Failed to create window\n");
@@ -1202,10 +1278,9 @@ static bool setup_window(struct imv *imv)
   }
 
   {
-    int ww, wh, bw, bh;
-    imv_window_get_size(imv->window, &ww, &wh);
-    imv_window_get_framebuffer_size(imv->window, &bw, &bh);
-    imv->view = imv_viewport_create(ww, wh, bw, bh);
+    int w, h;
+    imv_window_get_framebuffer_size(imv->window, &w, &h);
+    imv->view = imv_viewport_create(w, h);
   }
 
   if (imv->custom_start_pan) {
@@ -1216,9 +1291,9 @@ static bool setup_window(struct imv *imv)
   imv_window_set_fullscreen(imv->window, imv->start_fullscreen);
 
   {
-    int ww, wh;
-    imv_window_get_size(imv->window, &ww, &wh);
-    imv->canvas = imv_canvas_create(ww, wh);
+    int w, h;
+    imv_window_get_framebuffer_size(imv->window, &w, &h);
+    imv->canvas = imv_canvas_create(w, h);
     imv_canvas_font(imv->canvas, imv->overlay.font.name, imv->overlay.font.size);
   }
 
@@ -1241,6 +1316,11 @@ static void handle_new_image(struct imv *imv, struct imv_image *image, int frame
   /* If this is an animated image, we should kick off loading the next frame */
   if (imv->current_source && frametime) {
     imv_source_async_load_next_frame(imv->current_source);
+  }
+
+  /* Push image change commands into the event queue */
+  for (size_t i = 0; i < imv->image_change_commands->len; ++i) {
+    command_callback(imv->image_change_commands->items[i], imv);
   }
 }
 
@@ -1301,9 +1381,6 @@ static void consume_internal_event(struct imv *imv, struct internal_event *event
 
 static void render_window(struct imv *imv)
 {
-  int ww, wh;
-  imv_window_get_size(imv->window, &ww, &wh);
-
   /* update window title */
   char title_text[1024];
   generate_env_text(imv, title_text, sizeof title_text, imv->title_text);
@@ -1336,10 +1413,14 @@ static void render_window(struct imv *imv)
     }
     imv_canvas_draw_image(imv->canvas, imv->current_image,
                           x, y, scale, rotation, mirrored,
-                          imv->upscaling_method, imv->cache_invalidated);
+                          imv->upscaling_method);
   }
 
   imv_canvas_clear(imv->canvas);
+
+  int w, h;
+  imv_window_get_framebuffer_size(imv->window, &w, &h);
+  int ui_scale = imv_window_get_scale(imv->window);
 
   /* if the overlay needs to be drawn, draw that too */
   if (imv->overlay.enabled) {
@@ -1351,10 +1432,10 @@ static void render_window(struct imv *imv)
     pango_layout_get_pixel_size(layout, &width, &height);
 
     int y = 0;
-    const int bottom_offset = 5;
+    const int bottom_offset = 5 * ui_scale;
     if (imv->overlay.position_at_bottom)
     {
-      y = wh - height - bottom_offset;
+      y = h - height - bottom_offset;
     }
 
     imv_canvas_color(imv->canvas,
@@ -1376,25 +1457,25 @@ static void render_window(struct imv *imv)
 
   /* draw command entry bar if needed */
   if (imv_console_prompt(imv->console)) {
-    const int bottom_offset = 5;
-    const int height = imv->overlay.font.size * 1.2;
+    const int bottom_offset = 5 * ui_scale;
+    const int height = imv->overlay.font.size * ui_scale * 1.2;
     imv_canvas_color(imv->canvas, 0, 0, 0, 0.75);
-    imv_canvas_fill_rectangle(imv->canvas, 0, wh - height - bottom_offset,
-        ww, height + bottom_offset);
+    imv_canvas_fill_rectangle(imv->canvas, 0, h - height - bottom_offset,
+        w, height + bottom_offset);
     imv_canvas_color(imv->canvas, 1, 1, 1, 1);
 
     int x = 0;
     /* draw pre-cursor text */
-    x += imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset,
+    x += imv_canvas_printf(imv->canvas, x, h - height - bottom_offset,
         ":%.*s",
         imv_console_prompt_cursor(imv->console),
         imv_console_prompt(imv->console));
     /* draw the cursor */
     imv_canvas_color(imv->canvas, 1, 1, 1, 0.5);
-    imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset, "\u2588");
+    imv_canvas_printf(imv->canvas, x, h - height - bottom_offset, "\u2588");
     /* any any remaining text on top of the cursor */
     imv_canvas_color(imv->canvas, 1, 1, 1, 1);
-    imv_canvas_printf(imv->canvas, x, wh - height - bottom_offset, "%s",
+    imv_canvas_printf(imv->canvas, x, h - height - bottom_offset, "%s",
         imv_console_prompt(imv->console) + imv_console_prompt_cursor(imv->console));
   }
 
@@ -1402,7 +1483,6 @@ static void render_window(struct imv *imv)
 
   /* redraw complete, unset the flag */
   imv->need_redraw = false;
-  imv->cache_invalidated = false;
 }
 
 static char *get_config_path(void)
@@ -1699,8 +1779,13 @@ static void command_zoom(struct list *args, const char *argstr, void *data)
     if (!strcmp(str, "actual")) {
       imv_viewport_scale_to_actual(imv->view, imv->current_image);
     } else {
-      long int amount = strtol(args->items[1], NULL, 10);
-      imv_viewport_zoom(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount);
+      char *endptr;
+      long int amount = strtol(args->items[1], &endptr, 10);
+      if (*endptr == '%') {
+        imv_viewport_scale_by(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount/100.0);
+      } else if (*endptr == '\0') {
+        imv_viewport_zoom(imv->view, imv->current_image, IMV_ZOOM_KEYBOARD, 0, 0, amount);
+      }
     }
   }
 }
@@ -1735,26 +1820,26 @@ static void command_flip(struct list *args, const char *argstr, void *data)
 
 static void command_open(struct list *args, const char *argstr, void *data)
 {
-  (void)argstr;
+  (void)args;
+  while(*argstr == ' ') {
+    argstr++;
+  }
   struct imv *imv = data;
   bool recursive = imv->recursive_load;
 
   update_env_vars(imv);
-  for (size_t i = 1; i < args->len; ++i) {
+  /* allow -r arg to specify recursive */
+  if (memcmp(argstr, "-r", 2) == 0) {
+    argstr += 2;
+    recursive = true;
+  }
 
-    /* allow -r arg to specify recursive */
-    if (i == 1 && !strcmp(args->items[i], "-r")) {
-      recursive = true;
-      continue;
+  wordexp_t word;
+  if (wordexp(argstr, &word, 0) == 0) {
+    for (size_t i = 0; i < word.we_wordc; ++i) {
+      imv_navigator_add(imv->navigator, word.we_wordv[i], recursive);
     }
-
-    wordexp_t word;
-    if (wordexp(args->items[i], &word, 0) == 0) {
-      for (size_t j = 0; j < word.we_wordc; ++j) {
-        imv_navigator_add(imv->navigator, word.we_wordv[j], recursive);
-      }
-      wordfree(&word);
-    }
+    wordfree(&word);
   }
 }
 
@@ -1889,7 +1974,6 @@ static void command_set_upscaling_method(struct list *args, const char *argstr, 
   }
 
   imv->need_redraw = true;
-  imv->cache_invalidated = true;
 }
 
 static void command_set_slideshow_duration(struct list *args, const char *argstr, void *data)
@@ -1990,7 +2074,7 @@ static size_t generate_env_text(struct imv *imv, char *buf, size_t buf_len, cons
   setenv("IFS", "", 1);
   if (wordexp(format, &word, 0) == 0) {
     for (size_t i = 0; i < word.we_wordc; ++i) {
-      len += snprintf(buf + len, buf_len - len, "%s ", word.we_wordv[i]);
+      len += snprintf(buf + len, buf_len - len, (i ? " %s" : "%s"), word.we_wordv[i]);
     }
     wordfree(&word);
   } else {
@@ -2006,27 +2090,41 @@ static size_t read_from_stdin(void **buffer)
   size_t len = 0;
   ssize_t r;
   size_t step = 4096; /* Arbitrary value of 4 KiB */
-  void *p;
+  void *new_buf;
 
-  errno = 0; /* clear errno */
+  errno = 0;
+  *buffer = NULL;
 
-  for (*buffer = NULL; (*buffer = realloc((p = *buffer), len + step));
-      len += (size_t)r) {
-    if ((r = read(STDIN_FILENO, (uint8_t *)*buffer + len, step)) == -1) {
-      perror(NULL);
+  while (1) {
+    new_buf = realloc(*buffer, len + step);
+    if (new_buf) {
+      *buffer = new_buf;
+    } else {
+      /* Failed to extend buffer */
+      int save = errno;
+      free(*buffer);
+      errno = save;
+      *buffer = NULL;
+      len = 0;
       break;
-    } else if (r == 0) {
+    }
+
+    r = read(STDIN_FILENO, (uint8_t *)*buffer + len, step);
+    if (r > 0) {
+      len += (size_t)r;
+    } else {
+      if (r < 0) {
+        /* Read error */
+        int save = errno;
+        perror(NULL);
+        free(*buffer);
+        errno = save;
+        len = 0;
+      }
       break;
     }
   }
 
-  /* realloc(3) leaves old buffer allocated in case of error */
-  if (*buffer == NULL && p != NULL) {
-    int save = errno;
-    free(p);
-    errno = save;
-    len = 0;
-  }
   return len;
 }
 

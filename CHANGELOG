@@ -1,7 +1,79 @@
 imv Changelog
 =============
 
+UNRELEASED
+----------
+
+* Add support for CMYK jpeg files via optional LittleCMS dependency
+* Add support for animated WebP files
+* Fix libtiff backend on big endian hosts
+* Add new '-V' flag to enable verbose logs
+* Fix crash when default cursor shape couldn't be determined
+* Add new '-C' that allows running a command each time a new image is displayed
+* Request server-side decorations on Wayland
+
+v5.0.1 - 2025-11-27
+-------------------
+
+* In multi-windows installation the imv script now contains absolute paths to
+  the executables allowing multiple installations on a single machine to coexist
+
+v5.0.0 - 2025-11-09
+-------------------
+
+BREAKING CHANGES:
+* FreeImage support is dropped as the library is unmaintained and contains unpatched vulnerabilities
+* libnsgif now requires version 1.0.0
+* The 'open' command no longer splits arguments by space before shell expansion
+* The 'zoom' command now checks the passed argument for a '%' suffix and scales
+  the image linearly if it is present; no other suffixes are allowed
+
+* Fix linking errors with icu > 75
+* Fix displaying HEIF images with odd width
+* Fix displaying images with dimensions larger than maximum OpenGL texture size
+* Use linear mipmaps to downscale images when OpenGL 3 is available
+* Fix scaling of SVG images on HiDPI monitors
+* Try to display broken JPEG images when the corruption is not fatal
+* Mime types listed in desktop files now correctly reflect enabled backends
+* New backends: libnsbmp, qoi, farbfeld, libwebp
+* Support for touchpad gestures on wayland
+* New command line option '-i' sets the app id of the created window
+
+v4.5.0 - 2024-02-20
+-------------------
+
+* Add new jpgxl backend
+* Added -W and -H arguments to configure initial dimensions
+* Fix utf8 in window titles
+* Fix some animated gifs showing as still images
+* Fix several crashes
+* Fixed new build warnings
+* Limit libnsgif to <1.0.0 to fix build
+* Update mime types
+
+v4.4.0 - 2023-01-18
+-------------------
+
+* Fixed critical error "wl_window: fix buffer size not divisible by scale"
+* Added libgrapheme 2.0.0 as an alternative to icu
+* Added '-w' option to specify window title at startup
+* Added background rectangle behind the (possibly multiline) overlay text
+* Changed chequered pattern to only over the image area for transparent images not the whole viewport
+* Renamed imv-folder to imv-dir
+* Fixed slideshow not always pausing correctly
+* Fixed imv-dir showing as a duplicate imv in its desktop file
+* Fixed whitespace bug in expanded title text
+* Made imv-dir fall back to imv behaviour when given too many arguments
+* Improved handling of paths from stdin
+* Minor documentation and changelog improvements
+
+v4.3.1 - 2021-12-14
+-------------------
+
+* Fix segfault when used with latest wlroots
+
 v4.3.0 - 2021-08-05
+-------------------
 
 * Give freeimage backend preceedence over libjpeg
 * Fix lack of X11 window deletion event handling
@@ -19,6 +91,7 @@ v4.3.0 - 2021-08-05
 * Fix flickering bug in high-DPI wayland
 
 v4.2.0 - 2020-12-17
+-------------------
 
 * Switched to meson build system
 * Added HEIF backend
@@ -32,6 +105,7 @@ v4.2.0 - 2020-12-17
 * Fixed bug when selecting first/last image
 
 v4.1.0 - 2019-12-21
+-------------------
 
 * Added libsngif backend
 * Added command history to console
@@ -46,6 +120,7 @@ v4.1.0 - 2019-12-21
 * Fixed name of the LGPL
 
 v4.0.1 - 2019-08-28
+-------------------
 
 * Documented default binds in man page
 * Added icon to imv.desktop
@@ -53,6 +128,7 @@ v4.0.1 - 2019-08-28
 * Added warning when legacy bind syntax is detected
 
 v4.0.0 - 2019-08-27
+-------------------
 
 BREAKING CHANGES:
 * Fixed keyboard layout handling, changing bind syntax
@@ -84,14 +160,17 @@ BREAKING CHANGES:
 * Fixed several memory leaks
 
 v3.1.2 - 2019-06-24
+-------------------
 
 * Fix manpage packaging regression introduced in v3.1.1
 
 v3.1.1 - 2019-06-22
+-------------------
 
 * Adjusted Makefile to improve packaging on BSDs
 
 v3.1.0 - 2019-06-17
+-------------------
 
 * Added support for multiple image loaders, allowing imv to use libraries other
   than FreeImage. This adds support for SVGs, and in the future, other formats
@@ -108,6 +187,7 @@ v3.1.0 - 2019-06-17
 * Miscellaneous code cleanup and documentation fixes
 
 v3.0.0 - 2018-05-08
+-------------------
 
 BREAKING CHANGES:
 * Change a,s,S flags to -s <mode> syntax
@@ -125,6 +205,7 @@ BREAKING CHANGES:
 * Fix bug where slideshow timer is not reset when an image is closed
 
 v2.1.3 - 2016-10-22
+-------------------
 
 * Fix various resource leaks
 * Fix a bug where imv would to try and catch up on long periods of lost gif
@@ -154,7 +235,7 @@ v2.1.0 - 2016-04-27
 * Fix fullscreen bug with i3
 * Fix bug where gifs would sometimes not auto-scale when opened
 * Add commit hash to version string of non-release builds
-* Fix bug where '+' did not work on foriegn keyboard layouts
+* Fix bug where '+' did not work on foreign keyboard layouts
 
 v2.0.0 - 2016-02-08
 -------------------
@@ -212,4 +293,4 @@ v1.1.0 - 2015-11-14
 
 v1.0.0 - 2015-11-11
 -------------------
-Intitial release
+Initial release

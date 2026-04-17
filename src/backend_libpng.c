@@ -5,8 +5,10 @@
 #include "source.h"
 #include "source_private.h"
 
+#include <assert.h>
 #include <stdlib.h>
-
+#include <string.h>
+#include <errno.h>
 #include <png.h>
 
 struct private {
@@ -39,32 +41,33 @@ static void load_image(void *raw_private, struct imv_image **image, int *frameti
     return;
   }
 
-  const int width = png_get_image_width(private->png, private->info);
-  const int height = png_get_image_height(private->png, private->info);
+  struct imv_bitmap bmp =
+      imv_bitmap_alloc(png_get_image_width(private->png, private->info),
+          png_get_image_height(private->png, private->info));
+  if (!bmp.data) {
+    return;
+  }
+  png_bytep *rows = malloc(sizeof(png_bytep) * bmp.height);
+  if (!rows) {
+    imv_bitmap_free(bmp);
+    return;
+  }
 
-  png_bytep *rows = malloc(sizeof(png_bytep) * height);
   size_t row_len = png_get_rowbytes(private->png, private->info);
-  rows[0] = malloc(height * row_len);
-  for (int y = 1; y < height; ++y) {
-    rows[y] = rows[0] + row_len * y;
+  assert(bmp.height * row_len == imv_bitmap_size(bmp));
+  for (int y = 0; y < bmp.height; ++y) {
+    rows[y] = bmp.data + row_len * y;
   }
 
   if (setjmp(png_jmpbuf(private->png))) {
     return;
   }
-
   png_read_image(private->png, rows);
-  void *raw_bmp = rows[0];
+
   free(rows);
   fclose(private->file);
   private->file = NULL;
 
-
-  struct imv_bitmap *bmp = malloc(sizeof *bmp);
-  bmp->width = width;
-  bmp->height = height;
-  bmp->format = IMV_ABGR;
-  bmp->data = raw_bmp;
   *image = imv_image_create_from_bitmap(bmp);
 }
 
@@ -73,14 +76,9 @@ static const struct imv_source_vtable vtable = {
   .free = free_private
 };
 
-static enum backend_result open_path(const char *path, struct imv_source **src)
+static enum backend_result open_file(FILE *f, struct imv_source **src)
 {
-
   unsigned char header[8];
-  FILE *f = fopen(path, "rb");
-  if (!f) {
-    return BACKEND_BAD_PATH;
-  }
   fread(header, 1, sizeof header, f);
   if (png_sig_cmp(header, 0, sizeof header)) {
     fclose(f);
@@ -142,11 +140,30 @@ static enum backend_result open_path(const char *path, struct imv_source **src)
   return BACKEND_SUCCESS;
 }
 
+static enum backend_result open_path(const char *path, struct imv_source **src)
+{
+  FILE *f = fopen(path, "rb");
+  if (!f) {
+    return BACKEND_BAD_PATH;
+  }
+  return open_file(f, src);
+}
+
+static enum backend_result open_memory(void *data, size_t len, struct imv_source **src)
+{
+  FILE *f = fmemopen(data, len, "rb");
+  if (!f) {
+    imv_log(IMV_DEBUG, "libpng: fmemopen failed: %s\n", strerror(errno));
+    return BACKEND_UNSUPPORTED;
+  }
+  return open_file(f, src);
+}
+
 const struct imv_backend imv_backend_libpng = {
   .name = "libpng",
   .description = "The official PNG reference implementation",
   .website = "http://www.libpng.org/pub/png/libpng.html",
   .license = "The libpng license",
   .open_path = &open_path,
+  .open_memory = &open_memory,
 };
-

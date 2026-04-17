@@ -1,22 +1,29 @@
 #include "bitmap.h"
 
+#include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
-struct imv_bitmap *imv_bitmap_clone(struct imv_bitmap *bmp)
+size_t imv_bitmap_size(struct imv_bitmap bmp)
 {
-  struct imv_bitmap *copy = malloc(sizeof *copy);
-  const size_t num_bytes = 4 * bmp->width * bmp->height;
-  copy->width = bmp->width;
-  copy->height = bmp->height;
-  copy->format = bmp->format;
-  copy->data = malloc(num_bytes);
-  memcpy(copy->data, bmp->data, num_bytes);
-  return copy;
+  assert((size_t)bmp.width <= SIZE_MAX / bmp.height / BYTES_PER_CHANNEL);
+  return (size_t)bmp.width * bmp.height * BYTES_PER_CHANNEL;
 }
 
-void imv_bitmap_free(struct imv_bitmap *bmp)
+struct imv_bitmap imv_bitmap_alloc(int32_t width, int32_t height)
 {
-  free(bmp->data);
-  free(bmp);
+  assert(width > 0 && height > 0);
+  struct imv_bitmap result = {
+      .width = width,
+      .height = height,
+      .data = NULL,
+  };
+
+  if ((size_t)width <= SIZE_MAX / height / BYTES_PER_CHANNEL) {
+    result.data = malloc(imv_bitmap_size(result));
+  }
+
+  return result;
 }
+
+void imv_bitmap_free(struct imv_bitmap bmp) { free(bmp.data); }

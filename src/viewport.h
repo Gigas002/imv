@@ -21,8 +21,7 @@ enum imv_zoom_source {
 };
 
 /* Creates an instance of imv_viewport */
-struct imv_viewport *imv_viewport_create(int window_width, int window_height,
-                                         int buffer_width, int buffer_height);
+struct imv_viewport *imv_viewport_create(int buffer_width, int buffer_height);
 
 /* Cleans up an imv_viewport instance */
 void imv_viewport_free(struct imv_viewport *view);
@@ -60,6 +59,11 @@ void imv_viewport_move(struct imv_viewport *view, int x, int y,
  * dimensions */
 void imv_viewport_zoom(struct imv_viewport *view, const struct imv_image *image,
                        enum imv_zoom_source, int mouse_x, int mouse_y, int amount);
+
+/* Scale the view by the given factor. imv_image* is used to get the image
+ * dimensions */
+void imv_viewport_scale_by(struct imv_viewport *view, const struct imv_image *image,
+                       enum imv_zoom_source, int mouse_x, int mouse_y, double scale_factor);
 
 /* Rotate the view by the given number of degrees */
 void imv_viewport_rotate_by(struct imv_viewport *view, double degrees);
@@ -101,7 +105,6 @@ void imv_viewport_set_redraw(struct imv_viewport *view);
 
 /* Tell the viewport the window or image has changed */
 void imv_viewport_update(struct imv_viewport *view,
-                         int window_width, int window_height,
                          int buffer_width, int buffer_height,
                          struct imv_image *image, enum scaling_mode);
 

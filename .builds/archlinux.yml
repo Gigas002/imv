@@ -3,30 +3,35 @@ packages:
   - asciidoc
   - clang
   - cmocka
-  - freeimage
-  - glu
   - icu
+  - lcms2
   - libglvnd
   - libheif
   - libinih
   - libjpeg-turbo
+  - libjxl
   - libnsgif
+  - libnsbmp
   - libpng
   - librsvg
   - libtiff
+  - libwebp
   - libx11
   - libxcb
   - libxkbcommon
   - libxkbcommon-x11
   - meson
   - pango
+  - qoi
   - wayland
+  - wayland-protocols
+  - tinyxxd
 sources:
   - https://git.sr.ht/~exec64/imv
 tasks:
   - gcc: |
-      CC=gcc meson imv build_gcc -D auto_features=enabled
+      CC=gcc meson setup imv build_gcc -D auto_features=enabled -Dwerror=true
       CC=gcc ninja -C build_gcc test
   - clang: |
-      CC=clang meson imv build_clang -D auto_features=enabled
+      CC=clang meson setup imv build_clang -D auto_features=enabled -Dwerror=true
       CC=clang ninja -C build_clang test

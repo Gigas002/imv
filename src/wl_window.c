@@ -2,6 +2,7 @@
 
 #include "keyboard.h"
 #include "list.h"
+#include "log.h"
 
 #include <assert.h>
 #include <fcntl.h>
@@ -13,25 +14,32 @@
 #include <time.h>
 
 #include <wayland-client.h>
+#include <wayland-cursor.h>
 #include <wayland-egl.h>
 #include <EGL/egl.h>
 #include <GL/gl.h>
 #include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "pointer-gestures-unstable-v1-client-protocol.h"
+
+#define imv_min(a,b) ((a) > (b) ? (b) : (a))
 
 struct imv_window {
-  struct wl_display    *wl_display;
-  struct wl_registry   *wl_registry;
+  struct wl_display *wl_display;
+  struct wl_registry *wl_registry;
   struct wl_compositor *wl_compositor;
-  struct wl_surface    *wl_surface;
-  struct xdg_wm_base   *wl_xdg;
-  struct xdg_surface   *wl_xdg_surface;
-  struct xdg_toplevel  *wl_xdg_toplevel;
-  struct wl_seat       *wl_seat;
-  struct wl_keyboard   *wl_keyboard;
-  struct wl_pointer    *wl_pointer;
-  EGLDisplay           egl_display;
-  EGLContext           egl_context;
-  EGLSurface           egl_surface;
+  struct wl_surface *wl_surface;
+  struct xdg_wm_base *wl_xdg;
+  struct xdg_surface *wl_xdg_surface;
+  struct xdg_toplevel *wl_xdg_toplevel;
+  struct zxdg_decoration_manager_v1 *decoration_manager;
+  struct wl_seat *wl_seat;
+  struct wl_keyboard *wl_keyboard;
+  struct wl_pointer *wl_pointer;
+  struct wl_shm *wl_shm;
+  EGLDisplay egl_display;
+  EGLContext egl_context;
+  EGLSurface egl_surface;
   struct wl_egl_window *egl_window;
 
   bool xdg_configured;
@@ -53,23 +61,29 @@ struct imv_window {
   int scale;
 
   struct {
+    struct wl_cursor_theme *theme;
+    struct wl_cursor_image *cursor_image;
+    struct wl_surface *surface;
+
     struct {
-      double last;
-      double current;
-    } x;
+      wl_fixed_t x, y;
+      bool mouse1;
+    } current;
+
     struct {
-      double last;
-      double current;
-    } y;
-    struct {
-      bool last;
-      bool current;
-    } mouse1;
-    struct {
-      double dx;
-      double dy;
-    } scroll;
+      wl_fixed_t dx, dy;
+      wl_fixed_t scroll_dx, scroll_dy;
+      bool dmouse1;
+    } change;
   } pointer;
+
+  struct {
+    struct zwp_pointer_gestures_v1 *interface;
+    struct zwp_pointer_gesture_pinch_v1 *pinch;
+    wl_fixed_t dx, dy;
+    wl_fixed_t scale;
+    wl_fixed_t rotation;
+  } gestures;
 };
 
 struct output_data {
@@ -86,6 +100,54 @@ static void set_nonblocking(int fd)
   flags |= O_NONBLOCK;
   int rc = fcntl(fd, F_SETFL, flags);
   assert(rc != -1);
+}
+
+static bool set_cursor(struct imv_window *window, const char *name) {
+  struct wl_cursor *cursor = wl_cursor_theme_get_cursor(window->pointer.theme,
+                                                        name);
+  if (!cursor || !cursor->image_count) {
+    return false;
+  }
+  assert(cursor->images[0]);
+
+  window->pointer.cursor_image = cursor->images[0];
+  struct wl_buffer *cursor_buffer =
+      wl_cursor_image_get_buffer(window->pointer.cursor_image);
+  assert(cursor_buffer);
+
+  wl_surface_attach(window->pointer.surface, cursor_buffer, 0, 0);
+  wl_surface_set_buffer_scale(window->pointer.surface, window->scale);
+
+  wl_surface_commit(window->pointer.surface);
+  return true;
+}
+
+static void reload_cursor_theme(struct imv_window *window) {
+  if (window->pointer.theme) {
+    wl_cursor_theme_destroy(window->pointer.theme);
+  }
+  const char *xcursor_size = getenv("XCURSOR_SIZE");
+  int size;
+  if (!xcursor_size || !(size = atoi(xcursor_size))) {
+    imv_log(IMV_WARNING, "Couldn't determine cursor size, defaulting to 24\n");
+    size = 24;
+  }
+  const char *theme_name = getenv("XCURSOR_THEME");
+  int scaled_size = size * window->scale;
+  imv_log(IMV_DEBUG, "Cursor theme: '%s', size: %d, scaled size: %d\n",
+          theme_name ? theme_name : "(null)", size, scaled_size);
+
+  window->pointer.theme = wl_cursor_theme_load(theme_name,
+                                               scaled_size,
+                                               window->wl_shm);
+  if (!window->pointer.surface) {
+    window->pointer.surface = wl_compositor_create_surface(window->wl_compositor);
+  }
+  if (!set_cursor(window, "default")) {
+    imv_log(IMV_WARNING,
+        "Couldn't determine default cursor shape, ensure your XCURSOR_SIZE, "
+        "XCURSOR_THEME, and XCURSOR_PATH variables are set correctly\n");
+  }
 }
 
 static void handle_ping_xdg_wm_base(void *data, struct xdg_wm_base *xdg,
@@ -237,7 +299,7 @@ static void keyboard_repeat(void *data, struct wl_keyboard *keyboard,
   (void)keyboard;
   struct imv_window *window = data;
   window->repeat_delay = delay;
-  window->repeat_interval = 1000 / rate;
+  window->repeat_interval = rate == 0 ? 0 : 1000 / rate;
 }
 
 static const struct wl_keyboard_listener keyboard_listener = {
@@ -258,10 +320,21 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
   (void)surface;
 
   struct imv_window *window = data;
-  window->pointer.x.last = wl_fixed_to_double(surface_x);
-  window->pointer.y.last = wl_fixed_to_double(surface_y);
-  window->pointer.x.current = wl_fixed_to_double(surface_x);
-  window->pointer.y.current = wl_fixed_to_double(surface_y);
+  if (!window->pointer.cursor_image) {
+    imv_log(IMV_WARNING,
+        "Cursor image is not set, the displayed cursor may be incorrect\n");
+    return;
+  }
+
+  wl_pointer_set_cursor(pointer, serial,
+                        window->pointer.surface,
+                        window->pointer.cursor_image->hotspot_x / window->scale,
+                        window->pointer.cursor_image->hotspot_y / window->scale);
+
+  window->pointer.current.x = surface_x;
+  window->pointer.current.y = surface_y;
+  window->pointer.change.dx = 0;
+  window->pointer.change.dy = 0;
 }
 
 static void pointer_leave(void *data, struct wl_pointer *pointer,
@@ -280,8 +353,10 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
   (void)time;
 
   struct imv_window *window = data;
-  window->pointer.x.current = wl_fixed_to_double(surface_x);
-  window->pointer.y.current = wl_fixed_to_double(surface_y);
+  window->pointer.change.dx += surface_x - window->pointer.current.x;
+  window->pointer.change.dy += surface_y - window->pointer.current.y;
+  window->pointer.current.x = surface_x;
+  window->pointer.current.y = surface_y;
 }
 
 static void pointer_button(void *data, struct wl_pointer *pointer,
@@ -294,7 +369,8 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
   struct imv_window *window = data;
   const uint32_t MOUSE1 = 0x110;
   if (button == MOUSE1) {
-    window->pointer.mouse1.current = state;
+    window->pointer.change.dmouse1 |= state != window->pointer.current.mouse1;
+    window->pointer.current.mouse1 = state;
   }
 }
 
@@ -306,9 +382,9 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
 
   struct imv_window *window = data;
   if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-    window->pointer.scroll.dy += wl_fixed_to_double(value);
+    window->pointer.change.scroll_dy += value;
   } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-    window->pointer.scroll.dx += wl_fixed_to_double(value);
+    window->pointer.change.scroll_dx += value;
   }
 }
 
@@ -318,17 +394,17 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
 
   struct imv_window *window = data;
 
-  int dx = window->pointer.x.current - window->pointer.x.last;
-  int dy = window->pointer.y.current - window->pointer.y.last;
-  window->pointer.x.last = window->pointer.x.current;
-  window->pointer.y.last = window->pointer.y.current;
+  int dx = wl_fixed_to_int(window->scale * window->pointer.change.dx);
+  int dy = wl_fixed_to_int(window->scale * window->pointer.change.dy);
+  window->pointer.change.dx -= wl_fixed_from_int(dx) / window->scale;
+  window->pointer.change.dy -= wl_fixed_from_int(dy) / window->scale;
   if (dx || dy) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_MOTION,
       .data = {
         .mouse_motion = {
-          .x = window->pointer.x.current,
-          .y = window->pointer.y.current,
+          .x = wl_fixed_to_double(window->scale * window->pointer.current.x),
+          .y = wl_fixed_to_double(window->scale * window->pointer.current.y),
           .dx = dx,
           .dy = dy,
         }
@@ -337,35 +413,33 @@ static void pointer_frame(void *data, struct wl_pointer *pointer)
     imv_window_push_event(window, &e);
   }
 
-  if (window->pointer.mouse1.current != window->pointer.mouse1.last) {
-    window->pointer.mouse1.last = window->pointer.mouse1.current;
+  if (window->pointer.change.dmouse1) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_BUTTON,
       .data = {
         .mouse_button = {
           .button = 1,
-          .pressed = window->pointer.mouse1.current
+          .pressed = window->pointer.current.mouse1
         }
       }
     };
     imv_window_push_event(window, &e);
   }
 
-  if (window->pointer.scroll.dx || window->pointer.scroll.dy) {
+  if (window->pointer.change.scroll_dx || window->pointer.change.scroll_dy) {
     struct imv_event e = {
       .type = IMV_EVENT_MOUSE_SCROLL,
       .data = {
         .mouse_scroll = {
-          .dx = window->pointer.scroll.dx,
-          .dy = window->pointer.scroll.dy
+          .dx = wl_fixed_to_double(window->pointer.change.scroll_dx),
+          .dy = wl_fixed_to_double(window->pointer.change.scroll_dy)
         }
       }
     };
     imv_window_push_event(window, &e);
-    window->pointer.scroll.dx = 0;
-    window->pointer.scroll.dy = 0;
+    window->pointer.change.scroll_dx = 0;
+    window->pointer.change.scroll_dy = 0;
   }
-
 }
 
 static void pointer_axis_source(void *data, struct wl_pointer *pointer,
@@ -406,6 +480,79 @@ static const struct wl_pointer_listener pointer_listener = {
   .axis_discrete = pointer_axis_discrete
 };
 
+static void pinch_begin(void *data,
+		      struct zwp_pointer_gesture_pinch_v1 *pinch,
+		      uint32_t serial,
+		      uint32_t time,
+		      struct wl_surface *surface,
+		      uint32_t fingers) {
+  (void)pinch;
+  (void)serial;
+  (void)time;
+  (void)surface;
+  (void)fingers;
+
+  struct imv_window *window = data;
+  window->gestures.dx = 0;
+  window->gestures.dy = 0;
+  window->gestures.scale = wl_fixed_from_double(1.0);
+}
+
+static void pinch_update(void *data,
+                         struct zwp_pointer_gesture_pinch_v1 *pinch,
+                         uint32_t time, wl_fixed_t dx, wl_fixed_t dy,
+                         wl_fixed_t scale, wl_fixed_t rotation) {
+  (void)pinch;
+  (void)time;
+
+  struct imv_window *window = data;
+  window->gestures.dx += dx;
+  window->gestures.dy += dy;
+
+  int scaled_dx = wl_fixed_to_int(window->scale * window->gestures.dx);
+  int scaled_dy = wl_fixed_to_int(window->scale * window->gestures.dy);
+  window->gestures.dx -= wl_fixed_from_int(scaled_dx) / window->scale;
+  window->gestures.dy -= wl_fixed_from_int(scaled_dy) / window->scale;
+
+  if (scaled_dx ||
+      scaled_dy ||
+      window->gestures.scale ||
+      window->gestures.rotation) {
+    struct imv_event e = {
+      .type = IMV_EVENT_GESTURE_PINCH,
+      .data = {
+        .gesture_pinch = {
+          .dx = scaled_dx,
+          .dy = scaled_dy,
+          .scale = wl_fixed_to_double(scale) / wl_fixed_to_double(window->gestures.scale),
+          .rotation = wl_fixed_to_double(rotation),
+        }
+      }
+    };
+    imv_window_push_event(window, &e);
+    window->gestures.scale = scale;
+    window->gestures.rotation = 0;
+  }
+}
+
+static void pinch_end(void *data,
+		    struct zwp_pointer_gesture_pinch_v1 *pinch,
+		    uint32_t serial,
+		    uint32_t time,
+		    int32_t cancelled) {
+  (void)data;
+  (void)pinch;
+  (void)serial;
+  (void)time;
+  (void)cancelled;
+}
+
+static const struct zwp_pointer_gesture_pinch_v1_listener pinch_listener = {
+  pinch_begin,
+  pinch_update,
+  pinch_end,
+};
+
 static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities)
 {
   (void)seat;
@@ -415,8 +562,20 @@ static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabil
     if (!window->wl_pointer) {
       window->wl_pointer = wl_seat_get_pointer(window->wl_seat);
       wl_pointer_add_listener(window->wl_pointer, &pointer_listener, window);
+      if (window->gestures.interface) {
+        window->gestures.pinch = zwp_pointer_gestures_v1_get_pinch_gesture(
+          window->gestures.interface,
+          window->wl_pointer
+        );
+        zwp_pointer_gesture_pinch_v1_add_listener(window->gestures.pinch,
+                                                  &pinch_listener, window);
+      }
     }
   } else {
+    if (window->gestures.pinch) {
+      zwp_pointer_gesture_pinch_v1_destroy(window->gestures.pinch);
+      window->gestures.pinch = NULL;
+    }
     if (window->wl_pointer) {
       wl_pointer_release(window->wl_pointer);
       window->wl_pointer = NULL;
@@ -502,22 +661,35 @@ static void on_global(void *data, struct wl_registry *registry, uint32_t id,
   struct imv_window *window = data;
 
   if (!strcmp(interface, "wl_compositor")) {
-    window->wl_compositor = 
+    version = imv_min(version, 4);
+    window->wl_compositor =
       wl_registry_bind(registry, id, &wl_compositor_interface, version);
   } else if (!strcmp(interface, "xdg_wm_base")) {
+    version = imv_min(version, 2);
     window->wl_xdg =
       wl_registry_bind(registry, id, &xdg_wm_base_interface, version);
     xdg_wm_base_add_listener(window->wl_xdg, &shell_listener_xdg, window);
   } else if (!strcmp(interface, "wl_seat")) {
+    version = imv_min(version, 7);
     window->wl_seat = wl_registry_bind(registry, id, &wl_seat_interface, version);
     wl_seat_add_listener(window->wl_seat, &seat_listener, window);
   } else if (!strcmp(interface, "wl_output")) {
+    version = imv_min(version, 3);
     struct output_data *output_data = calloc(1, sizeof *output_data);
     output_data->wl_output = wl_registry_bind(registry, id, &wl_output_interface, version);
     output_data->pending_scale = 1;
     wl_output_set_user_data(output_data->wl_output, output_data);
     wl_output_add_listener(output_data->wl_output, &output_listener, output_data);
     list_append(window->wl_outputs, output_data);
+  } else if (!strcmp(interface, wl_shm_interface.name)) {
+    version = imv_min(version, 1);
+    window->wl_shm = wl_registry_bind(registry, id, &wl_shm_interface, version);
+  } else if (!strcmp(interface, zwp_pointer_gestures_v1_interface.name)) {
+    window->gestures.interface = wl_registry_bind(
+      registry, id, &zwp_pointer_gestures_v1_interface, 3);
+  } else if (!strcmp(interface, zxdg_decoration_manager_v1_interface.name)) {
+    window->decoration_manager = wl_registry_bind(
+      registry, id, &zxdg_decoration_manager_v1_interface, 1);
   }
 }
 
@@ -544,12 +716,12 @@ static void update_scale(struct imv_window *window)
   if (new_scale != window->scale) {
     window->scale = new_scale;
     wl_surface_set_buffer_scale(window->wl_surface, window->scale);
-    wl_surface_commit(window->wl_surface);
-    wl_display_roundtrip(window->wl_display);
     size_t buffer_width = window->width * window->scale;
     size_t buffer_height = window->height * window->scale;
     wl_egl_window_resize(window->egl_window, buffer_width, buffer_height, 0, 0);
     glViewport(0, 0, buffer_width, buffer_height);
+
+    reload_cursor_theme(window);
 
     struct imv_event e = {
       .type = IMV_EVENT_RESIZE,
@@ -663,10 +835,12 @@ static const struct xdg_toplevel_listener toplevel_listener = {
   .close = toplevel_close
 };
 
-static void connect_to_wayland(struct imv_window *window)
+static bool connect_to_wayland(struct imv_window *window)
 {
   window->wl_display = wl_display_connect(NULL);
-  assert(window->wl_display);
+  if (window->wl_display == NULL) {
+    return false;
+  }
   window->display_fd = wl_display_get_fd(window->wl_display);
   pipe(window->pipe_fds);
   set_nonblocking(window->pipe_fds[0]);
@@ -680,13 +854,16 @@ static void connect_to_wayland(struct imv_window *window)
   assert(window->wl_compositor);
   assert(window->wl_xdg);
   assert(window->wl_seat);
+  assert(window->wl_shm);
 
   window->egl_display = eglGetDisplay(window->wl_display);
   eglInitialize(window->egl_display, NULL, NULL);
+
+  return true;
 }
 
 static void create_window(struct imv_window *window, int width, int height,
-    const char *title)
+    const char *title, const char *app_id)
 {
   eglBindAPI(EGL_OPENGL_API);
   EGLint attributes[] = {
@@ -705,6 +882,8 @@ static void create_window(struct imv_window *window, int width, int height,
   assert(window->wl_surface);
   wl_surface_add_listener(window->wl_surface, &surface_listener, window);
 
+  reload_cursor_theme(window);
+
   window->wl_xdg_surface = xdg_wm_base_get_xdg_surface(window->wl_xdg, window->wl_surface);
   assert(window->wl_xdg_surface);
 
@@ -715,7 +894,16 @@ static void create_window(struct imv_window *window, int width, int height,
 
   xdg_toplevel_add_listener(window->wl_xdg_toplevel, &toplevel_listener, window);
   xdg_toplevel_set_title(window->wl_xdg_toplevel, title);
-  xdg_toplevel_set_app_id(window->wl_xdg_toplevel, "imv");
+  xdg_toplevel_set_app_id(window->wl_xdg_toplevel, app_id);
+
+  if (window->decoration_manager) {
+    struct zxdg_toplevel_decoration_v1 *decoration =
+      zxdg_decoration_manager_v1_get_toplevel_decoration(
+        window->decoration_manager,
+        window->wl_xdg_toplevel);
+    zxdg_toplevel_decoration_v1_set_mode(
+      decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+  }
 
   window->egl_window = wl_egl_window_create(window->wl_surface, width, height);
   window->egl_surface = eglCreateWindowSurface(window->egl_display, config, window->egl_window, NULL);
@@ -735,8 +923,23 @@ static void shutdown_wayland(struct imv_window *window)
   if (window->wl_pointer) {
     wl_pointer_destroy(window->wl_pointer);
   }
+  if (window->gestures.pinch) {
+    zwp_pointer_gesture_pinch_v1_destroy(window->gestures.pinch);
+  }
+  if (window->gestures.interface) {
+    zwp_pointer_gestures_v1_destroy(window->gestures.interface);
+  }
   if (window->wl_keyboard) {
     wl_keyboard_destroy(window->wl_keyboard);
+  }
+  if (window->pointer.surface) {
+    wl_surface_destroy(window->pointer.surface);
+  }
+  if (window->pointer.theme) {
+    wl_cursor_theme_destroy(window->pointer.theme);
+  }
+  if (window->wl_shm) {
+    wl_shm_destroy(window->wl_shm);
   }
   if (window->wl_seat) {
     wl_seat_destroy(window->wl_seat);
@@ -750,6 +953,9 @@ static void shutdown_wayland(struct imv_window *window)
   if (window->wl_xdg) {
     xdg_wm_base_destroy(window->wl_xdg);
   }
+  if (window->decoration_manager) {
+    zxdg_decoration_manager_v1_destroy(window->decoration_manager);
+  }
   if (window->egl_window) {
     wl_egl_window_destroy(window->egl_window);
   }
@@ -759,6 +965,10 @@ static void shutdown_wayland(struct imv_window *window)
   }
   if (window->wl_compositor) {
     wl_compositor_destroy(window->wl_compositor);
+  }
+  for (size_t i = 0; i < window->wl_outputs->len; ++i) {
+    struct output_data *data = window->wl_outputs->items[i];
+    wl_output_destroy(data->wl_output);
   }
   if (window->wl_registry) {
     wl_registry_destroy(window->wl_registry);
@@ -774,7 +984,16 @@ static void on_timer(union sigval sigval)
   push_keypress(window, window->repeat_scancode);
 }
 
-struct imv_window *imv_window_create(int width, int height, const char *title)
+extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+
+static void load_gl_functions(void) {
+  if (atoi((const char*)glGetString(GL_VERSION)) >= 3) {
+    imv_glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)eglGetProcAddress("glGenerateMipmap");
+  }
+}
+
+struct imv_window *imv_window_create(int width, int height, const char *title,
+                                     const char *app_id)
 {
   /* Ensure event writes will always be atomic */
   assert(sizeof(struct imv_event) <= PIPE_BUF);
@@ -785,8 +1004,11 @@ struct imv_window *imv_window_create(int width, int height, const char *title)
   window->keyboard = imv_keyboard_create();
   assert(window->keyboard);
   window->wl_outputs = list_create();
-  connect_to_wayland(window);
-  create_window(window, width, height, title);
+  if (!connect_to_wayland(window)) {
+    return NULL;
+  }
+  create_window(window, width, height, title, app_id);
+  load_gl_functions();
 
   struct sigevent timer_handler = {
     .sigev_notify = SIGEV_THREAD,
@@ -835,6 +1057,10 @@ void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
   }
 }
 
+int imv_window_get_scale(struct imv_window *window) {
+  return window->scale;
+}
+
 void imv_window_set_title(struct imv_window *window, const char *title)
 {
   xdg_toplevel_set_title(window->wl_xdg_toplevel, title);
@@ -857,7 +1083,7 @@ void imv_window_set_fullscreen(struct imv_window *window, bool fullscreen)
 bool imv_window_get_mouse_button(struct imv_window *window, int button)
 {
   if (button == 1) {
-    return window->pointer.mouse1.last;
+    return window->pointer.current.mouse1;
   }
   return false;
 }
@@ -865,10 +1091,10 @@ bool imv_window_get_mouse_button(struct imv_window *window, int button)
 void imv_window_get_mouse_position(struct imv_window *window, double *x, double *y)
 {
   if (x) {
-    *x = window->pointer.x.last;
+    *x = wl_fixed_to_double(window->scale * window->pointer.current.x);
   }
   if (y) {
-    *y = window->pointer.y.last;
+    *y = wl_fixed_to_double(window->scale * window->pointer.current.y);
   }
 }
 
@@ -900,7 +1126,10 @@ void imv_window_wait_for_event(struct imv_window *window, double timeout)
   }
 
   if (fds[0].revents & POLLIN) {
-    wl_display_read_events(window->wl_display);
+    if (wl_display_read_events(window->wl_display) != 0) {
+      imv_log(IMV_ERROR, "Failed to read compositor events. Aborting.\n");
+      abort();
+    }
   } else {
     wl_display_cancel_read(window->wl_display);
   }
@@ -914,7 +1143,10 @@ void imv_window_push_event(struct imv_window *window, struct imv_event *e)
 
 void imv_window_pump_events(struct imv_window *window, imv_event_handler handler, void *data)
 {
-  wl_display_dispatch_pending(window->wl_display);
+  if (wl_display_dispatch_pending(window->wl_display) < 0) {
+    imv_log(IMV_ERROR, "Failed to dispatch compositor events. Aborting.\n");
+    abort();
+  }
 
   while (1) {
     struct imv_event e;

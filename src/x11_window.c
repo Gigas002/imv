@@ -93,7 +93,18 @@ static void setup_keymap(struct imv_window *window)
   xcb_disconnect(conn);
 }
 
-struct imv_window *imv_window_create(int w, int h, const char *title)
+extern PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap;
+
+static void load_gl_functions(void) {
+  if (atoi((const char*)glGetString(GL_VERSION)) >= 3) {
+    imv_glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)glXGetProcAddressARB(
+      (const GLubyte *)"glGenerateMipmap"
+    );
+  }
+}
+
+struct imv_window *imv_window_create(int w, int h, const char *title,
+                                     const char *app_id)
 {
   /* Ensure event writes will always be atomic */
   assert(sizeof(struct imv_event) <= PIPE_BUF);
@@ -106,7 +117,9 @@ struct imv_window *imv_window_create(int w, int h, const char *title)
   set_nonblocking(window->pipe_fds[1]);
 
   window->x_display = XOpenDisplay(NULL);
-  assert(window->x_display);
+  if (window->x_display == NULL) {
+    return NULL;
+  }
   Window root = DefaultRootWindow(window->x_display);
   assert(root);
 
@@ -137,7 +150,7 @@ struct imv_window *imv_window_create(int w, int h, const char *title)
   window->x_fullscreen = XInternAtom(window->x_display, "_NET_WM_STATE_FULLSCREEN", true);
 
   XClassHint hint = {
-    .res_name = "imv",
+    .res_name = (char*)app_id,
     .res_class= "imv",
   };
   XSetClassHint(window->x_display, window->x_window, &hint);
@@ -145,11 +158,12 @@ struct imv_window *imv_window_create(int w, int h, const char *title)
   window->wm_protocols = XInternAtom(window->x_display, "WM_PROTOCOLS", false);
   window->wm_delete_window = XInternAtom(window->x_display, "WM_DELETE_WINDOW", false);
   XSetWMProtocols(window->x_display, window->x_window, &window->wm_delete_window, 1);
-  XStoreName(window->x_display, window->x_window, title);
+  imv_window_set_title(window, title);
 
   window->x_glc = glXCreateContext(window->x_display, vi, NULL, GL_TRUE);
   assert(window->x_glc);
   glXMakeCurrent(window->x_display, window->x_window, window->x_glc);
+  load_gl_functions();
 
   window->keyboard = imv_keyboard_create();
   assert(window->keyboard);
@@ -181,16 +195,6 @@ void imv_window_clear(struct imv_window *window, unsigned char r,
   glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void imv_window_get_size(struct imv_window *window, int *w, int *h)
-{
-  if (w) {
-    *w = window->width;
-  }
-  if (h) {
-    *h = window->height;
-  }
-}
-
 void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
 {
   if (w) {
@@ -201,23 +205,35 @@ void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h)
   }
 }
 
+int imv_window_get_scale(struct imv_window *window) {
+  (void)window;
+  return 1;
+}
+
 void imv_window_set_title(struct imv_window *window, const char *title)
 {
+  Atom atom_wm_name;
+  Atom atom_utf8;
+
   XStoreName(window->x_display, window->x_window, title);
+  atom_wm_name = XInternAtom(window->x_display, "_NET_WM_NAME", False);
+  atom_utf8 = XInternAtom(window->x_display, "UTF8_STRING", False);
+  XChangeProperty(window->x_display, window->x_window, atom_wm_name, atom_utf8,
+      8, PropModeReplace, (unsigned char*)title, strlen(title));
 }
 
 bool imv_window_is_fullscreen(struct imv_window *window)
 {
-  size_t count = 0;
+  unsigned long count = 0;
   Atom type;
   int format;
-  size_t after;
+  unsigned long after;
   Atom *props = NULL;
   XGetWindowProperty(window->x_display, window->x_window, window->x_state,
       0, 1024, False, XA_ATOM, &type, &format, &count, &after, (unsigned char**)&props);
 
   bool fullscreen = false;
-  for (size_t i = 0; i < count; ++i) {
+  for (unsigned long i = 0; i < count; ++i) {
     if (props[i] == window->x_fullscreen) {
       fullscreen = true;
       break;
@@ -419,7 +435,7 @@ void imv_window_pump_events(struct imv_window *window, imv_event_handler handler
         handler(data, &e);
       }
     } else if (xev.type == ClientMessage) {
-      if (xev.xclient.message_type = window->wm_protocols && xev.xclient.data.l[0] == window->wm_delete_window) {
+      if (xev.xclient.message_type == window->wm_protocols && (Atom)xev.xclient.data.l[0] == window->wm_delete_window) {
         struct imv_event e = {
           .type = IMV_EVENT_CLOSE
         };

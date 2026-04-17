@@ -8,6 +8,14 @@ option('windows',
   description : 'window system to use'
 )
 
+# Unicode backend - default is ICU
+option('unicode',
+  type: 'combo',
+  value: 'icu',
+  choices : ['icu', 'grapheme'],
+  description : 'unicode library to use'
+)
+
 option('test',
   type : 'feature',
   description : 'enable tests'
@@ -26,12 +34,12 @@ option('man',
 
 # Available backends:
 
-# FreeImage http://freeimage.sourceforge.net
-# depends: libjpeg, openexr, openjpeg2, libwebp, libraw, jxrlib
-# license: FIPL v1.0
-option('freeimage',
+# farbfeld
+# depends: none
+# license: ISC
+option('farbfeld',
   type : 'feature',
-  description : 'provides: png, jpg, animated gif, raw, psd, bmp, tiff, webp, etc.'
+  description : 'provides: ff'
 )
 
 # libtiff
@@ -58,6 +66,14 @@ option('libjpeg',
   description : 'provides: jpeg'
 )
 
+# lcms2: https://github.com/mm2/Little-CMS
+# depends: none
+# license: MIT
+option('lcms2',
+  type : 'feature',
+  description : 'provides: better color conversion for JPEG images with embedded ICC profile'
+)
+
 # librsvg https://wiki.gnome.org/Projects/LibRsvg
 # depends: gdk-pixbuf2 pango libcroco
 # license: LGPL
@@ -74,10 +90,42 @@ option('libnsgif',
   description : 'provides: animated gif'
 )
 
+# libnsbmp https://www.netsurf-browser.org/projects/libnsbmp/
+# depends: none
+# license: MIT
+option('libnsbmp',
+  type : 'feature',
+  description : 'provides: bmp'
+)
+
 # libheif http://www.libheif.org
 # depends: none
 # license: LGPL
 option('libheif',
   type : 'feature',
   description : 'provides: heif'
+)
+
+# libjxl https://jpeg.org/jpegxl/
+# depends: brotlidec, brotlienc, highway, lcms2
+# license: modified bsd
+option('libjxl',
+  type : 'feature',
+  description : 'provides: jxl'
+)
+
+# libwebp https://developers.google.com/speed/webp
+# depends: none
+# license: modified bsd
+option('libwebp',
+  type : 'feature',
+  description : 'provides: webp'
+)
+
+# qoi https://qoiformat.org/
+# depends: none
+# license: MIT
+option('qoi',
+  type : 'feature',
+  description : 'provides: qoi'
 )

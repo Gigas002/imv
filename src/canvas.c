@@ -22,6 +22,8 @@
 unsigned char checkers_data[] = { REPEAT8(REPEAT8(0xCC, 0xCC, 0xCC, 0xFF), REPEAT8(0x80, 0x80, 0x80, 0xFF)),
                                   REPEAT8(REPEAT8(0x80, 0x80, 0x80, 0xFF), REPEAT8(0xCC, 0xCC, 0xCC, 0xFF)) };
 
+PFNGLGENERATEMIPMAPPROC imv_glGenerateMipmap = NULL;
+
 struct imv_canvas {
   cairo_surface_t *surface;
   cairo_t *cairo;
@@ -30,8 +32,10 @@ struct imv_canvas {
   int width;
   int height;
   struct {
-    struct imv_bitmap *bitmap;
-    GLuint texture;
+    const struct imv_bitmap *bitmap;
+    enum upscaling_method upscaling_method;
+    size_t tex_count;
+    GLuint *textures;
   } cache;
   GLuint checkers_texture;
 };
@@ -83,14 +87,17 @@ void imv_canvas_free(struct imv_canvas *canvas)
   cairo_surface_destroy(canvas->surface);
   canvas->surface = NULL;
   glDeleteTextures(1, &canvas->texture);
-  if (canvas->cache.texture) {
-    glDeleteTextures(1, &canvas->cache.texture);
+  if (canvas->cache.tex_count) {
+    glDeleteTextures(canvas->cache.tex_count, canvas->cache.textures);
+    canvas->cache.tex_count = 0;
+    free(canvas->cache.textures);
+    canvas->cache.textures = NULL;
   }
   glDeleteTextures(1, &canvas->checkers_texture);
   free(canvas);
 }
 
-void imv_canvas_resize(struct imv_canvas *canvas, int width, int height, double scale)
+void imv_canvas_resize(struct imv_canvas *canvas, int width, int height)
 {
   cairo_destroy(canvas->cairo);
   cairo_surface_destroy(canvas->surface);
@@ -101,7 +108,6 @@ void imv_canvas_resize(struct imv_canvas *canvas, int width, int height, double 
   canvas->surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
                                                canvas->width, canvas->height);
   assert(canvas->surface);
-  cairo_surface_set_device_scale(canvas->surface, scale, scale);
   canvas->cairo = cairo_create(canvas->surface);
   assert(canvas->cairo);
 }
@@ -249,29 +255,87 @@ void imv_canvas_draw(struct imv_canvas *canvas)
   glPopMatrix();
 }
 
-struct imv_bitmap *imv_image_get_bitmap(const struct imv_image *image);
-
-static int convert_pixelformat(enum imv_pixelformat fmt)
-{
-  /* opengl uses RGBA order, not ARGB, so we get it to
-   * flip the bytes around so ARGB -> BGRA
-   */
-  if (fmt == IMV_ARGB) {
-    return GL_BGRA;
-  } else if (fmt == IMV_ABGR) {
-    return GL_RGBA;
+static GLint convert_upscaling_method(enum upscaling_method upscaling_method) {
+  if (upscaling_method == UPSCALING_LINEAR) {
+    return GL_LINEAR;
+  } else if (upscaling_method == UPSCALING_NEAREST_NEIGHBOUR) {
+    return GL_NEAREST;
   } else {
-    imv_log(IMV_WARNING, "Unknown pixel format. Defaulting to ARGB\n");
-    return GL_BGRA;
+    imv_log(IMV_ERROR, "Unknown upscaling method: %d\n", upscaling_method);
+    abort();
+  }
+}
+
+static inline int min(int a, int b) { return a < b ? a : b; }
+
+static inline GLint get_gl_max_texture_size(void) {
+  GLint max_tex_size;
+  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex_size);
+  return max_tex_size;
+}
+
+static void update_upscaling_method(struct imv_canvas *canvas,
+                                    enum upscaling_method upscaling_method)
+{
+  const GLint upscaling = convert_upscaling_method(upscaling_method);
+  for (size_t i = 0; i < canvas->cache.tex_count; i++) {
+      glBindTexture(GL_TEXTURE_2D, canvas->cache.textures[i]);
+
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                      upscaling_method == UPSCALING_LINEAR && imv_glGenerateMipmap
+                        ? GL_LINEAR_MIPMAP_LINEAR
+                        : upscaling);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, upscaling);
+  }
+  canvas->cache.upscaling_method = upscaling_method;
+}
+
+static void prepare_cache(struct imv_canvas *canvas,
+                          const struct imv_bitmap *bitmap,
+                          enum upscaling_method upscaling_method)
+{
+  const GLint max_tex_size = get_gl_max_texture_size();
+  const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
+  const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
+
+  const size_t tex_count = tex_count_w * tex_count_h;
+  if (canvas->cache.tex_count < tex_count) {
+    canvas->cache.textures = realloc(canvas->cache.textures,
+                                     tex_count * sizeof canvas->cache.textures[0]);
+    if (!canvas->cache.textures) {
+      imv_log(IMV_ERROR, "Couldn't allocate textures\n");
+      abort();
+    }
+    glGenTextures(tex_count - canvas->cache.tex_count,
+                  canvas->cache.textures + canvas->cache.tex_count);
+    canvas->cache.tex_count = tex_count;
+    update_upscaling_method(canvas, upscaling_method);
+  }
+
+  for (int i = 0; i < tex_count_h; i++) {
+    for (int j = 0; j < tex_count_w; j++) {
+      glBindTexture(GL_TEXTURE_2D,
+                    canvas->cache.textures[i * tex_count_w + j]);
+
+      glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
+      glPixelStorei(GL_UNPACK_SKIP_ROWS, i * max_tex_size);
+      glPixelStorei(GL_UNPACK_SKIP_PIXELS, j * max_tex_size);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
+                   min(bitmap->width - j * max_tex_size, max_tex_size),
+                   min(bitmap->height - i * max_tex_size, max_tex_size),
+                   0, GL_RGBA, GL_UNSIGNED_BYTE, bitmap->data);
+      if (imv_glGenerateMipmap) {
+        imv_glGenerateMipmap(GL_TEXTURE_2D);
+      }
+    }
   }
 }
 
 static void draw_bitmap(struct imv_canvas *canvas,
-                        struct imv_bitmap *bitmap,
+                        const struct imv_bitmap *bitmap,
                         int bx, int by, double scale,
                         double rotation, bool mirrored,
-                        enum upscaling_method upscaling_method,
-                        bool cache_invalidated)
+                        enum upscaling_method upscaling_method)
 {
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
@@ -279,45 +343,18 @@ static void draw_bitmap(struct imv_canvas *canvas,
   glPushMatrix();
   glOrtho(0.0, viewport[2], viewport[3], 0.0, 0.0, 10.0);
 
-  if (!canvas->cache.texture) {
-    glGenTextures(1, &canvas->cache.texture);
+  if (canvas->cache.bitmap != bitmap) {
+    prepare_cache(canvas, bitmap, upscaling_method);
+    canvas->cache.bitmap = bitmap;
+  }
+  if (canvas->cache.upscaling_method != upscaling_method) {
+    update_upscaling_method(canvas, upscaling_method);
   }
 
-  const int format = convert_pixelformat(bitmap->format);
+  glEnable(GL_TEXTURE_2D);
 
-  glBindTexture(GL_TEXTURE_RECTANGLE, canvas->cache.texture);
-
-  GLint upscaling = 0;
-  if (upscaling_method == UPSCALING_LINEAR) {
-    upscaling = GL_LINEAR;
-  } else if (upscaling_method == UPSCALING_NEAREST_NEIGHBOUR) {
-    upscaling = GL_NEAREST;
-  } else {
-    imv_log(IMV_ERROR, "Unknown upscaling method: %d\n", upscaling_method);
-    abort();
-  }
-
-  if (canvas->cache.bitmap != bitmap || cache_invalidated) {
-    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, upscaling);
-    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap->width);
-    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGBA8, bitmap->width, bitmap->height,
-        0, format, GL_UNSIGNED_INT_8_8_8_8_REV, bitmap->data);
-  }
-  canvas->cache.bitmap = bitmap;
-
-  glEnable(GL_TEXTURE_RECTANGLE);
-
-  glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, upscaling);
-
-  const int left = bx;
-  const int top = by;
-  const int right = left + bitmap->width * scale;
-  const int bottom = top + bitmap->height * scale;
-  const int center_x = left + bitmap->width * scale / 2;
-  const int center_y = top + bitmap->height * scale / 2;
+  const int center_x = bx + bitmap->width * scale / 2;
+  const int center_y = by + bitmap->height * scale / 2;
 
   glTranslated(center_x, center_y, 0);
   if (mirrored) {
@@ -329,53 +366,67 @@ static void draw_bitmap(struct imv_canvas *canvas,
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  glBegin(GL_TRIANGLE_FAN);
-  glTexCoord2i(0,             0);              glVertex2i(left, top);
-  glTexCoord2i(bitmap->width, 0);              glVertex2i(right, top);
-  glTexCoord2i(bitmap->width, bitmap->height); glVertex2i(right, bottom);
-  glTexCoord2i(0,             bitmap->height); glVertex2i(left, bottom);
-  glEnd();
+  const GLint max_tex_size = get_gl_max_texture_size();
+  const int tex_count_w = ((bitmap->width + max_tex_size - 1) / max_tex_size);
+  const int tex_count_h = ((bitmap->height + max_tex_size - 1) / max_tex_size);
+
+  for (int i = 0; i < tex_count_h; i++) {
+    for (int j = 0; j < tex_count_w; j++) {
+      glBindTexture(GL_TEXTURE_2D, canvas->cache.textures[i * tex_count_w + j]);
+
+      const int tex_w = min(bitmap->width - j * max_tex_size, max_tex_size);
+      const int tex_h = min(bitmap->height - i * max_tex_size, max_tex_size);
+
+      const int left = bx + j * floor(max_tex_size * scale);
+      const int top = by + i * floor(max_tex_size * scale);
+      const int right = left + floor(tex_w * scale);
+      const int bottom = top + floor(tex_h * scale);
+
+      glBegin(GL_TRIANGLE_FAN);
+      glTexCoord2i(0, 0); glVertex2i(left,  top);
+      glTexCoord2i(1, 0); glVertex2i(right, top);
+      glTexCoord2i(1, 1); glVertex2i(right, bottom);
+      glTexCoord2i(0, 1); glVertex2i(left,  bottom);
+      glEnd();
+    }
+  }
 
   glDisable(GL_BLEND);
 
-  glBindTexture(GL_TEXTURE_RECTANGLE, 0);
-  glDisable(GL_TEXTURE_RECTANGLE);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_TEXTURE_2D);
   glPopMatrix();
 }
-
-#ifdef IMV_BACKEND_LIBRSVG
-RsvgHandle *imv_image_get_svg(const struct imv_image *image);
-#endif
 
 void imv_canvas_draw_image(struct imv_canvas *canvas, struct imv_image *image,
                            int x, int y, double scale,
                            double rotation, bool mirrored,
-                           enum upscaling_method upscaling_method,
-                           bool cache_invalidated)
+                           enum upscaling_method upscaling_method)
 {
-  struct imv_bitmap *bitmap = imv_image_get_bitmap(image);
-  if (bitmap) {
-    draw_bitmap(canvas, bitmap, x, y, scale, rotation, mirrored,
-                upscaling_method, cache_invalidated);
-    return;
-  }
-
+  switch (imv_image_get_type(image)) {
+    case IMV_IMAGE_BITMAP:
+      draw_bitmap(canvas, imv_image_get_bitmap(image), x, y, scale, rotation,
+                  mirrored, upscaling_method);
+      break;
 #ifdef IMV_BACKEND_LIBRSVG
-  RsvgHandle *svg = imv_image_get_svg(image);
-  if (svg) {
-    imv_canvas_clear(canvas);
-    cairo_translate(canvas->cairo, x, y);
-    cairo_scale(canvas->cairo, scale, scale);
-    cairo_translate(canvas->cairo, imv_image_width(image) / 2, imv_image_height(image) / 2);
-    if (mirrored) {
-      cairo_scale(canvas->cairo, -1, 1);
-    }
-    cairo_rotate(canvas->cairo, rotation * M_PI / 180.0);
-    cairo_translate(canvas->cairo, -imv_image_width(image) / 2, -imv_image_height(image) / 2);
-    rsvg_handle_render_cairo(svg, canvas->cairo);
-    cairo_identity_matrix(canvas->cairo);
-    imv_canvas_draw(canvas);
-    return;
-  }
+    case IMV_IMAGE_SVG:
+      imv_canvas_clear(canvas);
+      cairo_translate(canvas->cairo, x, y);
+      cairo_scale(canvas->cairo, scale, scale);
+      cairo_translate(canvas->cairo,
+                      imv_image_width(image) / 2.0,
+                      imv_image_height(image) / 2.0);
+      if (mirrored) {
+        cairo_scale(canvas->cairo, -1, 1);
+      }
+      cairo_rotate(canvas->cairo, rotation * M_PI / 180.0);
+      cairo_translate(canvas->cairo,
+                      -imv_image_width(image) / 2.0,
+                      -imv_image_height(image) / 2.0);
+      rsvg_handle_render_cairo(imv_image_get_svg(image), canvas->cairo);
+      cairo_identity_matrix(canvas->cairo);
+      imv_canvas_draw(canvas);
+      break;
 #endif
+  }
 }

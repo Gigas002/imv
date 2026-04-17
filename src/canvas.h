@@ -21,7 +21,7 @@ struct imv_canvas *imv_canvas_create(int width, int height);
 void imv_canvas_free(struct imv_canvas *canvas);
 
 /* Set the buffer size of the canvas */
-void imv_canvas_resize(struct imv_canvas *canvas, int width, int height, double scale);
+void imv_canvas_resize(struct imv_canvas *canvas, int width, int height);
 
 /* Blank the canvas to be empty and transparent */
 void imv_canvas_clear(struct imv_canvas *canvas);
@@ -62,7 +62,6 @@ void imv_canvas_draw(struct imv_canvas *canvas);
 void imv_canvas_draw_image(struct imv_canvas *canvas, struct imv_image *image,
                            int x, int y, double scale,
                            double rotation, bool mirrored,
-                           enum upscaling_method upscaling_method,
-                           bool cache_invalidated);
+                           enum upscaling_method upscaling_method);
 
 #endif

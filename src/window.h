@@ -13,6 +13,7 @@ enum imv_event_type {
   IMV_EVENT_MOUSE_MOTION,
   IMV_EVENT_MOUSE_BUTTON,
   IMV_EVENT_MOUSE_SCROLL,
+  IMV_EVENT_GESTURE_PINCH,
   IMV_EVENT_CUSTOM
 };
 
@@ -33,7 +34,7 @@ struct imv_event {
       char *text;
     } keyboard;
     struct {
-      double x, y, dx, dy;
+      int x, y, dx, dy;
     } mouse_motion;
     struct {
       int button;
@@ -42,12 +43,18 @@ struct imv_event {
     struct {
       double dx, dy;
     } mouse_scroll;
+    struct {
+      int dx, dy;
+      double scale;
+      double rotation;
+    } gesture_pinch;
     void *custom;
   } data;
 };
 
 /* Create a new window */
-struct imv_window *imv_window_create(int w, int h, const char *title);
+struct imv_window *imv_window_create(int w, int h, const char *title,
+                                     const char *app_id);
 
 /* Clean up an imv_window instance */
 void imv_window_free(struct imv_window *window);
@@ -56,11 +63,11 @@ void imv_window_free(struct imv_window *window);
 void imv_window_clear(struct imv_window *window, unsigned char r,
     unsigned char g, unsigned char b);
 
-/* Get the logical/event/window manager size of the window */
-void imv_window_get_size(struct imv_window *window, int *w, int *h);
-
 /* Get the pixel dimensions that the window is rendered at */
 void imv_window_get_framebuffer_size(struct imv_window *window, int *w, int *h);
+
+/* Get the scale of the UI elements in the window */
+int imv_window_get_scale(struct imv_window *window);
 
 /* Set the window's title */
 void imv_window_set_title(struct imv_window *window, const char *title);
