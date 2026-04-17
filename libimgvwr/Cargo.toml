@@ -18,6 +18,8 @@ decorations = []
 
 [dependencies]
 image = { version = "0.25", default-features = false }
+memmap2 = "0.9"
+rustix = { version = "1", features = ["fs"] }
 
 [dev-dependencies]
 tempfile = "3"

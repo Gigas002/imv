@@ -452,7 +452,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 5 — Wayland core
 
-- [ ] **5.1** Implement `libimgvwr::wayland::shm`:
+- [x] **5.1** Implement `libimgvwr::wayland::shm`:
   - `ShmPool { fd: OwnedFd, mmap: MmapMut, size: usize }` — created with `rustix::fs::memfd_create`
   - `fn create(size: usize) -> Result<ShmPool>` — create memfd, `ftruncate`, `mmap`
   - `fn resize(&mut self, new_size: usize)` — `ftruncate` + remap

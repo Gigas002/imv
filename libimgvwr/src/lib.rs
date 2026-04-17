@@ -8,3 +8,4 @@ pub mod loader;
 pub mod navigator;
 pub mod renderer;
 pub mod viewport;
+pub mod wayland;
