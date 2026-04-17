@@ -1,0 +1,24 @@
+[package]
+name = "imgvwr"
+version = "0.1.0"
+description = "Minimal Wayland image viewer"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "imgvwr"
+path = "src/main.rs"
+
+[features]
+default = ["png"]
+png = ["libimgvwr/png"]
+jpeg = ["libimgvwr/jpeg"]
+webp = ["libimgvwr/webp"]
+avif = ["libimgvwr/avif"]
+decorations = ["libimgvwr/decorations"]
+
+[dependencies]
+libimgvwr = { path = "../libimgvwr", default-features = false }

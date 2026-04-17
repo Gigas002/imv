@@ -340,9 +340,9 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 #### 0.1 — Cargo workspace skeleton
 
-- [ ] Create root `Cargo.toml` (`[workspace]`, members `["libimgvwr", "imgvwr"]`, `edition = "2024"`).
-- [ ] Create `libimgvwr/Cargo.toml` (package `name = "libimgvwr"`, empty `src/lib.rs`).
-- [ ] Create `imgvwr/Cargo.toml` (package `name = "imgvwr"`, `[[bin]] name = "imgvwr"`, empty `src/main.rs`).
+- [x] Create root `Cargo.toml` (`[workspace]`, members `["libimgvwr", "imgvwr"]`, `edition = "2024"`).
+- [x] Create `libimgvwr/Cargo.toml` (package `name = "libimgvwr"`, empty `src/lib.rs`).
+- [x] Create `imgvwr/Cargo.toml` (package `name = "imgvwr"`, `[[bin]] name = "imgvwr"`, empty `src/main.rs`).
 - [ ] Commit `Cargo.lock` (binary workspace — lock is always committed).
 
 **Verify**: `cargo build --workspace` compiles with zero warnings.
