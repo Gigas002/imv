@@ -417,7 +417,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - `fn reset(&mut self)` — scale = 1.0, offset = (0,0), rotation = 0
   - Write `viewport/tests.rs`: zoom clamp, rotation wraparound, pan is additive.
 
-- [ ] **3.2** Implement `libimgvwr::navigator`:
+- [x] **3.2** Implement `libimgvwr::navigator`:
   - `Navigator { paths: Vec<PathBuf>, current: usize }`
   - `fn from_path(p: &Path) -> Result<Navigator>` — if `p` is a file: scan sibling directory for supported image extensions; if `p` is a dir: scan it; sort by filename
   - `fn current(&self) -> &Path`
@@ -432,7 +432,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 4 — Software renderer
 
-- [ ] **4.1** Implement `libimgvwr::renderer`:
+- [x] **4.1** Implement `libimgvwr::renderer`:
   - `pub fn render(src: &DynamicImage, viewport: &ViewportState, dst_w: u32, dst_h: u32, filter: FilterMethod) -> Vec<u8>`
     - Compute `scaled_w = (src.width() as f32 * viewport.scale) as u32`, `scaled_h` analogously
     - `imageops::resize(src, scaled_w, scaled_h, filter.into())` → `ImageBuffer`
@@ -444,7 +444,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
     - Convert each RGBA pixel to ARGB (wl_shm_format `ARGB8888`): `[A, R, G, B]` → `[B, G, R, A]` (little-endian `0xAARRGGBB`)
   - Write `renderer/tests.rs`: render 4×4 red image at scale 1.0 into 8×8 buffer, assert center pixels are red (ARGB), corners are black (background).
 
-- [ ] **4.2** Background color: hardcode `0x00000000` (transparent/black) for now; make it a `Config` field in Phase 8 polish if desired.
+- [x] **4.2** Background color: hardcode `0x00000000` (transparent/black) for now; make it a `Config` field in Phase 8 polish if desired.
 
 **Verify**: renderer tests pass; no Wayland needed.
 
@@ -547,8 +547,9 @@ Each sub-step is independent; do them in any order.
 - [ ] **8.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
 - [ ] **8.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
 - [ ] **8.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §9).
-- [ ] **8.4** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
-- [ ] **8.5** Verify `--all-features` compiles and tests pass.
+- [ ] **8.4** Background color config: add `background_color: [u8; 3]` (RGB) to `imgvwr::config::ViewerConfig` with default `[0, 0, 0]`; pass it into `renderer::render()` as a fill color parameter (replace the hardcoded `0x00` initialiser in the output buffer).
+- [ ] **8.5** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
+- [ ] **8.6** Verify `--all-features` compiles and tests pass.
 
 ---
 
