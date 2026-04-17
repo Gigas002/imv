@@ -15,7 +15,10 @@ use std::io;
 
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
-    protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm, wl_surface},
+    protocol::{
+        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_shm_pool, wl_surface,
+    },
 };
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use xkbcommon::xkb::Keysym;
@@ -25,7 +28,10 @@ use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
 
-use crate::wayland::keyboard::{KeyboardState, key_event, update_keymap};
+use crate::wayland::{
+    keyboard::{KeyboardState, key_event, update_keymap},
+    shm::ShmPool,
+};
 
 // ── Input events ────────────────────────────────────────────────────────────
 
@@ -133,6 +139,10 @@ pub struct WaylandContext {
     /// Public Wayland state — surfaces, globals, pending events, flags.
     pub state: WaylandState,
     event_queue: EventQueue<WaylandState>,
+    /// SHM pool backing the pixel buffer. Created on first commit; resized as needed.
+    shm_pool: Option<ShmPool>,
+    /// The `wl_buffer` attached in the previous frame. Destroyed before each new commit.
+    prev_buffer: Option<wl_buffer::WlBuffer>,
 }
 
 impl WaylandContext {
@@ -194,15 +204,61 @@ impl WaylandContext {
             conn,
             state,
             event_queue,
+            shm_pool: None,
+            prev_buffer: None,
         })
     }
 
     /// Write `pixels` (ARGB8888, `w × h × 4` bytes) into a Wayland SHM buffer
     /// and commit it to the surface.
-    ///
-    /// Implemented in Phase 6.2.
-    pub fn commit_frame(&mut self, _pixels: &[u8], _w: u32, _h: u32) -> io::Result<()> {
-        todo!("Phase 6.2: SHM buffer commit")
+    pub fn commit_frame(&mut self, pixels: &[u8], w: u32, h: u32) -> io::Result<()> {
+        let size = (w * h * 4) as usize;
+
+        // Create or grow the SHM backing store.
+        match &self.shm_pool {
+            None => self.shm_pool = Some(ShmPool::create(size)?),
+            Some(p) if p.size < size => self.shm_pool.as_mut().unwrap().resize(size)?,
+            _ => {}
+        }
+
+        self.shm_pool.as_mut().unwrap().as_mut_slice()[..size].copy_from_slice(pixels);
+
+        // Build a wl_shm_pool + wl_buffer for this frame.
+        let stride = w as i32 * 4;
+        let wl_pool = {
+            let fd = self.shm_pool.as_ref().unwrap().fd();
+            let wl_shm = self
+                .state
+                .wl_shm()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "wl_shm not bound"))?;
+            wl_shm.create_pool(fd, size as i32, self.state.qh(), ())
+        };
+        let buffer = wl_pool.create_buffer(
+            0,
+            w as i32,
+            h as i32,
+            stride,
+            wl_shm::Format::Argb8888,
+            self.state.qh(),
+            (),
+        );
+        wl_pool.destroy();
+
+        // Destroy the previous frame's buffer before the new one takes the surface slot.
+        if let Some(prev) = self.prev_buffer.take() {
+            prev.destroy();
+        }
+
+        let surface = self
+            .state
+            .surface()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "surface not available"))?;
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, w as i32, h as i32);
+        surface.commit();
+
+        self.prev_buffer = Some(buffer);
+        self.flush()
     }
 
     /// Flush the outgoing Wayland socket buffer.
@@ -478,6 +534,30 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for WaylandState {
             }
             _ => {}
         }
+    }
+}
+
+impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_shm_pool::WlShmPool,
+        _: wl_shm_pool::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        _: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }
 

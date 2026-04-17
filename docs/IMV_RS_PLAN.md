@@ -509,7 +509,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - On pointer press + motion: `viewport.pan(dx, dy)` + dirty
   - On left/right arrow key (hardcoded keysyms `XK_Left`, `XK_Right`): `navigator.prev()/next()`, load new image, `viewport.reset()`, dirty
 
-- [ ] **6.2** `wayland.commit_frame(&pixels, w, h)`:
+- [x] **6.2** `wayland.commit_frame(&pixels, w, h)`:
   - Write `pixels` to `ShmPool` (resize pool if needed)
   - `wl_shm.create_pool` → `pool.create_buffer(w, h, stride, ARGB8888)` → `wl_surface.attach(buffer)` → `damage_buffer(0,0,w,h)` → `wl_surface.commit()`
   - Destroy previous `wl_buffer` after commit (or double-buffer)
