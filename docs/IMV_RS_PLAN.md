@@ -409,7 +409,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 3 — Viewport and navigator
 
-- [ ] **3.1** Implement `libimgvwr::viewport`:
+- [x] **3.1** Implement `libimgvwr::viewport`:
   - `ViewportState { scale: f32, offset: (f32, f32), rotation: u16 }` — rotation is 0/90/180/270 only
   - `fn zoom_by(&mut self, delta: f32, min_scale: f32, max_scale: f32)` — clamp to `[min_scale, max_scale]`; caller passes values from `imgvwr::config`
   - `fn rotate_left(&mut self)`, `fn rotate_right(&mut self)` — cycle through 0/270/180/90
