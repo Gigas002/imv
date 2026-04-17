@@ -1,6 +1,14 @@
-imv
-*.o
-test_*
+# Mac OS files
+.DS_Store
+
+# Vim files
+*.swp
+*.taghl
+tags
+
+# Project specific files
 build/
-subprojects/*
-!subprojects/*.wrap
+.cache
+
+# Rust (workspace)
+/target

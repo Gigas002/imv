@@ -340,12 +340,14 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 #### 0.1 — Cargo workspace skeleton
 
-- [ ] Create root `Cargo.toml` (`[workspace]`, members `["libimgvwr", "imgvwr"]`, `edition = "2024"`).
-- [ ] Create `libimgvwr/Cargo.toml` (package `name = "libimgvwr"`, empty `src/lib.rs`).
-- [ ] Create `imgvwr/Cargo.toml` (package `name = "imgvwr"`, `[[bin]] name = "imgvwr"`, empty `src/main.rs`).
-- [ ] Commit `Cargo.lock` (binary workspace — lock is always committed).
+- [x] Create root `Cargo.toml` (`[workspace]`, members `["libimgvwr", "imgvwr"]`, `edition = "2024"`).
+- [x] Create `libimgvwr/Cargo.toml` (package `name = "libimgvwr"`, empty `src/lib.rs`).
+- [x] Create `imgvwr/Cargo.toml` (package `name = "imgvwr"`, `[[bin]] name = "imgvwr"`, empty `src/main.rs`).
+- [x] Commit `Cargo.lock` (binary workspace — lock is always committed).
 
 **Verify**: `cargo build --workspace` compiles with zero warnings.
+
+#### 0.2 — CI workflows and repo config ✓
 
 #### 0.2 — CI workflows and repo config
 
@@ -367,7 +369,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 ### Phase 1 — Config types and TOML parsing
 
 - [ ] **1.1** Implement `libimgvwr::renderer::FilterMethod`:
-  - `FilterMethod` enum: Nearest`, `Triangle`, `CatmullRom`, `Gaussian`, `Lanczos3`; `impl From<FilterMethod> for image::imageops::FilterType`
+  - `FilterMethod` enum: `Nearest`, `Triangle`, `CatmullRom`, `Gaussian`, `Lanczos3`; `impl From<FilterMethod> for image::imageops::FilterType` (must mirror all image-rs types)
   - This is a renderer API type, not a config type — lives in `libimgvwr`, exported for `imgvwr` to use when calling `renderer::render()`.
   - No tests needed here (tested via renderer tests in Phase 4).
 
@@ -737,4 +739,4 @@ Update this file when:
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-04-17 | Initial plan created                                                                                                                                                                                                                                                                                |
 | 2026-04-17 | Config struct moved entirely to `imgvwr`; `libimgvwr` has no config module. `FilterMethod` lives in `libimgvwr::renderer` as an API type. `viewport::zoom_by` takes scalar min/max params. `KeybindMap::new` takes resolved keysyms; `keysym_from_str` exported for `imgvwr` to resolve at startup. |
-| 2026-04-17 | Phase 0 expanded with full CI detail (7 workflows + dependabot, `.typos.toml`, `deny.toml`). Legacy C/Meson cleanup moved to Phase 10 — must execute last, after v1.0, to preserve C reference tree during implementation. |
+| 2026-04-17 | Phase 0 expanded with full CI detail (7 workflows + dependabot, `.typos.toml`, `deny.toml`). Legacy C/Meson cleanup moved to Phase 10 — must execute last, after v1.0, to preserve C reference tree during implementation.                                                                          |
