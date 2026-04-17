@@ -20,7 +20,6 @@ use crate::settings::AppSettings;
 struct EventOutcome {
     dirty: bool,
     quit: bool,
-    #[cfg_attr(not(feature = "decorations"), allow(dead_code))]
     navigated: bool,
 }
 
@@ -31,6 +30,14 @@ fn make_title(path: &Path) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("imgvwr");
     format!("{name} — imgvwr")
+}
+
+/// Compute the largest scale that fits `img` inside `window` without cropping,
+/// clamped to `[min_scale, max_scale]`.
+fn fit_scale(img: &DynamicImage, window: (u32, u32), min_scale: f32, max_scale: f32) -> f32 {
+    let sw = window.0 as f32 / img.width() as f32;
+    let sh = window.1 as f32 / img.height() as f32;
+    sw.min(sh).clamp(min_scale, max_scale)
 }
 
 fn navigate_to(path: PathBuf, image: &mut DynamicImage, viewport: &mut ViewportState) -> bool {
@@ -114,17 +121,25 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
 
     info!(
         decorations = settings.decorations,
+        antialiasing = settings.antialiasing,
         filter = ?settings.filter,
         "imgvwr starting"
     );
 
     let mut navigator = Navigator::from_path(&settings.paths[0])?;
     let mut image = loader::load(navigator.current())?;
-
     info!(path = %navigator.current().display(), "loaded first image");
 
     let mut viewport = ViewportState::default();
     let mut wayland = WaylandContext::connect((800, 600), settings.decorations)?;
+
+    // Fit the first image to the negotiated window size.
+    viewport.scale = fit_scale(
+        &image,
+        wayland.state.window_size,
+        settings.min_scale,
+        settings.max_scale,
+    );
 
     #[cfg(feature = "decorations")]
     if settings.decorations {
@@ -137,30 +152,43 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         let events: Vec<InputEvent> = wayland.state.pending_events.drain(..).collect();
         let mut dirty = wayland.state.needs_redraw;
         wayland.state.needs_redraw = false;
-        #[cfg(feature = "decorations")]
         let mut any_navigated = false;
 
         for event in events {
             let outcome =
                 process_event(event, &settings, &mut navigator, &mut image, &mut viewport);
             dirty |= outcome.dirty;
-            #[cfg(feature = "decorations")]
-            {
-                any_navigated |= outcome.navigated;
-            }
+            any_navigated |= outcome.navigated;
             if outcome.quit {
                 wayland.state.closed = true;
             }
         }
 
-        #[cfg(feature = "decorations")]
-        if settings.decorations && any_navigated {
-            wayland.set_title(&make_title(navigator.current()));
+        if any_navigated {
+            viewport.scale = fit_scale(
+                &image,
+                wayland.state.window_size,
+                settings.min_scale,
+                settings.max_scale,
+            );
+            dirty = true;
+
+            #[cfg(feature = "decorations")]
+            if settings.decorations {
+                wayland.set_title(&make_title(navigator.current()));
+            }
         }
 
         if dirty {
             let (w, h) = wayland.state.window_size;
-            let pixels = renderer::render(&image, &viewport, w, h, settings.filter);
+            // Antialiasing = false overrides the configured filter with Nearest
+            // so the CPU cost of high-quality resampling is avoided.
+            let effective_filter = if settings.antialiasing {
+                settings.filter
+            } else {
+                renderer::FilterMethod::Nearest
+            };
+            let pixels = renderer::render(&image, &viewport, w, h, effective_filter);
             wayland.commit_frame(&pixels, w, h)?;
         }
 

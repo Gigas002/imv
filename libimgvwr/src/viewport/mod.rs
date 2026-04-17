@@ -33,8 +33,13 @@ impl Default for ViewportState {
 
 impl ViewportState {
     /// Adjust zoom by `delta`, clamping to `[min_scale, max_scale]`.
+    ///
+    /// Uses multiplicative scaling (`scale *= 1 + delta`) so that each step is
+    /// a constant *percentage* of the current scale, giving perceptually uniform
+    /// zoom at any magnification level. `delta = 0.08` always means ±8 %
+    /// regardless of whether the image is zoomed in to 10× or out to 0.1×.
     pub fn zoom_by(&mut self, delta: f32, min_scale: f32, max_scale: f32) {
-        self.scale = (self.scale + delta).clamp(min_scale, max_scale);
+        self.scale = (self.scale * (1.0 + delta)).clamp(min_scale, max_scale);
     }
 
     /// Rotate 90° counter-clockwise.

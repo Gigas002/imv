@@ -514,7 +514,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
                 value,
                 ..
             } => {
-                state.pending_events.push(InputEvent::Scroll(-value as f32));
+                // Normalise: raw axis value is ~10–15 units per wheel notch on most
+                // compositors (wlroots/libinput default is 15). Dividing by 10.0 maps
+                // one notch to ≈1.0, so `scale_step` in config means "zoom % per notch".
+                state
+                    .pending_events
+                    .push(InputEvent::Scroll(-value as f32 / 10.0));
             }
             _ => {}
         }

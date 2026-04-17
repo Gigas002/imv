@@ -19,6 +19,9 @@ pub(crate) struct AppSettings {
     pub(crate) paths: Vec<PathBuf>,
     /// Whether window title and server-side decorations are enabled (from `[window] decorations`).
     pub(crate) decorations: bool,
+    /// Whether antialiasing is enabled. When `false`, `FilterMethod::Nearest` is always used
+    /// regardless of `[viewer] filter_method` (from `[window] antialiasing`).
+    pub(crate) antialiasing: bool,
     /// Minimum zoom factor (from `[viewer] min_scale`).
     pub(crate) min_scale: f32,
     /// Maximum zoom factor (from `[viewer] max_scale`).
@@ -44,6 +47,7 @@ impl AppSettings {
         AppSettings {
             paths: cli.paths.clone(),
             decorations: window.decorations.unwrap_or(false),
+            antialiasing: window.antialiasing.unwrap_or(true),
             min_scale: viewer.min_scale.unwrap_or(0.1),
             max_scale: viewer.max_scale.unwrap_or(100.0),
             scale_step: viewer.scale_step.unwrap_or(0.08),
