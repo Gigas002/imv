@@ -10,10 +10,11 @@ homepage.workspace = true
 
 [features]
 default = ["png"]
-png = []
-jpeg = []
-webp = []
-avif = []
+png = ["image/png"]
+jpeg = ["image/jpeg"]
+webp = ["image/webp"]
+avif = ["image/avif"]
 decorations = []
 
 [dependencies]
+image = { version = "0.25", default-features = false }

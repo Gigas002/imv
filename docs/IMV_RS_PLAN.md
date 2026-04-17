@@ -368,12 +368,12 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 1 — Config types and TOML parsing
 
-- [ ] **1.1** Implement `libimgvwr::renderer::FilterMethod`:
+- [x] **1.1** Implement `libimgvwr::renderer::FilterMethod`:
   - `FilterMethod` enum: `Nearest`, `Triangle`, `CatmullRom`, `Gaussian`, `Lanczos3`; `impl From<FilterMethod> for image::imageops::FilterType` (must mirror all image-rs types)
   - This is a renderer API type, not a config type — lives in `libimgvwr`, exported for `imgvwr` to use when calling `renderer::render()`.
   - No tests needed here (tested via renderer tests in Phase 4).
 
-- [ ] **1.2** Implement `imgvwr::config`:
+- [x] **1.2** Implement `imgvwr::config`:
   - `FilterMethod` string deserializer: `"nearest"` → `libimgvwr::renderer::FilterMethod::Nearest` etc.
   - `WindowConfig { decorations: bool, antialiasing: bool }` with `impl Default`
   - `ViewerConfig { min_scale: f32, max_scale: f32, scale_step: f32, filter_method: FilterMethod }` with `impl Default`
