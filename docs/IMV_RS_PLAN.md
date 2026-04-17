@@ -514,7 +514,7 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
   - `wl_shm.create_pool` → `pool.create_buffer(w, h, stride, ARGB8888)` → `wl_surface.attach(buffer)` → `damage_buffer(0,0,w,h)` → `wl_surface.commit()`
   - Destroy previous `wl_buffer` after commit (or double-buffer)
 
-- [ ] **6.3** When `decorations` feature is enabled and `config.window.decorations = true`:
+- [x] **6.3** When `decorations` feature is enabled and `config.window.decorations = true`:
   - Set window title to `"{filename} — imgvwr"` via `xdg_toplevel.set_title`
   - Request server-side decorations via `zxdg_decoration_manager_v1`
   - When feature is disabled: `set_title` is never called; no `zxdg_decoration_manager_v1` binding

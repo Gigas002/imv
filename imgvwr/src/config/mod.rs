@@ -3,6 +3,8 @@ mod tests;
 
 use std::{env, error::Error, fs::File, io::Read, path::PathBuf};
 
+use tracing::{debug, info, warn};
+
 use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 
@@ -35,24 +37,57 @@ impl Config {
     /// built-in defaults → system → user (XDG or HOME) → `override_path`.
     pub fn load_merged(override_path: Option<&std::path::Path>) -> Config {
         let mut config = Config::default();
+
         let system = Config::get_system_path();
-        if system.exists()
-            && let Ok(c) = Config::load(&system)
-        {
-            config = Config::merge(config, c);
+        if system.exists() {
+            match Config::load(&system) {
+                Ok(c) => {
+                    info!(path = %system.display(), "loaded system config");
+                    config = Config::merge(config, c);
+                }
+                Err(e) => {
+                    warn!(path = %system.display(), error = %e, "failed to parse system config")
+                }
+            }
         }
+
         let user = Config::get_xdg_path().or_else(|_| Config::get_home_path());
-        if let Ok(p) = user
-            && p.exists()
-            && let Ok(c) = Config::load(&p)
-        {
-            config = Config::merge(config, c);
+        match user {
+            Ok(ref p) if p.exists() => match Config::load(p) {
+                Ok(c) => {
+                    info!(path = %p.display(), "loaded user config");
+                    config = Config::merge(config, c);
+                }
+                Err(e) => warn!(path = %p.display(), error = %e, "failed to parse user config"),
+            },
+            Err(e) => warn!(error = %e, "could not resolve user config path"),
+            _ => {}
         }
-        if let Some(path) = override_path
-            && let Ok(c) = Config::load(&path.to_path_buf())
-        {
-            config = Config::merge(config, c);
+
+        if let Some(path) = override_path {
+            match Config::load(&path.to_path_buf()) {
+                Ok(c) => {
+                    info!(path = %path.display(), "loaded --config override");
+                    config = Config::merge(config, c);
+                }
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "failed to parse --config override")
+                }
+            }
         }
+
+        let w = config.window.as_ref();
+        let v = config.viewer.as_ref();
+        debug!(
+            decorations = w.and_then(|w| w.decorations).unwrap_or(false),
+            antialiasing = w.and_then(|w| w.antialiasing).unwrap_or(true),
+            filter = ?v.and_then(|v| v.filter_method.as_ref()),
+            min_scale = v.and_then(|v| v.min_scale).unwrap_or(0.1),
+            max_scale = v.and_then(|v| v.max_scale).unwrap_or(100.0),
+            scale_step = v.and_then(|v| v.scale_step).unwrap_or(0.08),
+            "effective config"
+        );
+
         config
     }
 

@@ -17,6 +17,8 @@ use crate::{
 pub(crate) struct AppSettings {
     /// Image paths to open, taken directly from positional CLI arguments.
     pub(crate) paths: Vec<PathBuf>,
+    /// Whether window title and server-side decorations are enabled (from `[window] decorations`).
+    pub(crate) decorations: bool,
     /// Minimum zoom factor (from `[viewer] min_scale`).
     pub(crate) min_scale: f32,
     /// Maximum zoom factor (from `[viewer] max_scale`).
@@ -35,11 +37,13 @@ pub(crate) struct AppSettings {
 
 impl AppSettings {
     pub(crate) fn resolve(cli: &Cli, config: &Config) -> Self {
+        let window = config.window.clone().unwrap_or_default();
         let viewer = config.viewer.clone().unwrap_or_default();
         let keybindings = config.keybindings.clone().unwrap_or_default();
 
         AppSettings {
             paths: cli.paths.clone(),
+            decorations: window.decorations.unwrap_or(false),
             min_scale: viewer.min_scale.unwrap_or(0.1),
             max_scale: viewer.max_scale.unwrap_or(100.0),
             scale_step: viewer.scale_step.unwrap_or(0.08),

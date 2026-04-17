@@ -13,6 +13,10 @@ pub mod shm;
 
 use std::io;
 
+#[cfg(feature = "decorations")]
+use tracing::warn;
+use tracing::{debug, info};
+
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
     protocol::{
@@ -64,6 +68,8 @@ pub struct WaylandState {
 
     #[cfg(feature = "decorations")]
     decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    #[cfg(feature = "decorations")]
+    toplevel_decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
 
     // Surface objects created after the first roundtrip
     surface: Option<wl_surface::WlSurface>,
@@ -97,6 +103,8 @@ impl WaylandState {
             seat: None,
             #[cfg(feature = "decorations")]
             decoration_manager: None,
+            #[cfg(feature = "decorations")]
+            toplevel_decoration: None,
             surface: None,
             xdg_surface: None,
             xdg_toplevel: None,
@@ -150,7 +158,11 @@ impl WaylandContext {
     ///
     /// Performs two roundtrips: one to enumerate globals, one to receive the
     /// initial `xdg_toplevel::configure`.
-    pub fn connect(initial_size: (u32, u32)) -> io::Result<Self> {
+    pub fn connect(initial_size: (u32, u32), use_decorations: bool) -> io::Result<Self> {
+        // Suppress unused-variable lint when the `decorations` feature is off.
+        #[cfg(not(feature = "decorations"))]
+        let _ = use_decorations;
+
         let conn = Connection::connect_to_env()
             .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, e))?;
         let mut event_queue = conn.new_event_queue::<WaylandState>();
@@ -186,8 +198,15 @@ impl WaylandContext {
         toplevel.set_app_id("imgvwr".to_string());
 
         #[cfg(feature = "decorations")]
-        if let Some(mgr) = &state.decoration_manager {
-            let _deco = mgr.get_toplevel_decoration(&toplevel, &qh, ());
+        if use_decorations {
+            if let Some(mgr) = &state.decoration_manager {
+                debug!("requesting server-side decorations");
+                state.toplevel_decoration = Some(mgr.get_toplevel_decoration(&toplevel, &qh, ()));
+            } else {
+                warn!(
+                    "compositor does not support zxdg_decoration_manager_v1; no server-side decorations"
+                );
+            }
         }
 
         surface.commit();
@@ -199,6 +218,9 @@ impl WaylandContext {
         event_queue
             .roundtrip(&mut state)
             .map_err(io::Error::other)?;
+
+        let (w, h) = state.window_size;
+        info!(width = w, height = h, "connected to Wayland compositor");
 
         Ok(WaylandContext {
             conn,
@@ -278,6 +300,21 @@ impl WaylandContext {
             .map(|_| ())
             .map_err(io::Error::other)
     }
+
+    /// Set the XDG toplevel window title.
+    ///
+    /// Only available when the `decorations` feature is enabled. The title is
+    /// buffered and sent on the next Wayland socket flush (i.e. the next
+    /// `dispatch` call or `commit_frame`).
+    #[cfg(feature = "decorations")]
+    pub fn set_title(&mut self, title: &str) {
+        if let Some(toplevel) = &self.state.xdg_toplevel {
+            debug!(title, "setting window title");
+            toplevel.set_title(title.to_string());
+        } else {
+            warn!("set_title called but xdg_toplevel is not yet initialised");
+        }
+    }
 }
 
 // ── Dispatch implementations ─────────────────────────────────────────────────
@@ -314,6 +351,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             }
             #[cfg(feature = "decorations")]
             "zxdg_decoration_manager_v1" => {
+                info!("compositor supports server-side decorations");
                 state.decoration_manager = Some(registry.bind(name, version.min(1), qh, ()));
             }
             _ => {}
@@ -525,11 +563,13 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for WaylandState {
                 };
                 let new_size = (w as u32, h as u32);
                 if new_size != state.window_size {
+                    debug!(width = new_size.0, height = new_size.1, "window resized");
                     state.window_size = new_size;
                 }
                 state.needs_redraw = true;
             }
             xdg_toplevel::Event::Close => {
+                info!("compositor requested window close");
                 state.closed = true;
             }
             _ => {}

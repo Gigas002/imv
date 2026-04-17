@@ -18,6 +18,7 @@ decorations = []
 
 [dependencies]
 image = { version = "0.25", default-features = false }
+tracing = "0.1"
 memmap2 = "0.9"
 rustix = { version = "1", features = ["fs"] }
 wayland-client = "0.31"
