@@ -132,7 +132,12 @@ pub(crate) fn upload_texture(
     texture
 }
 
-/// Resize `src` to `(dst_w, dst_h)`. Dispatches to the appropriate GPU path:
+/// Resize `src` to `(dst_w, dst_h)` then optionally rotate by `rotation` degrees.
+///
+/// `rotation` must be a multiple of 90; any other value is treated as 0.
+/// When `rotation` is 90 or 270 the caller is responsible for passing the
+/// pre-swap `dst_w`/`dst_h` (i.e. the post-resize, pre-rotate dimensions).
+/// Dispatches resize to the appropriate GPU path:
 /// - `Lanczos3` / `CatmullRom` → two-pass separable kernel (fragment shader)
 /// - All others → sampler-based blit (nearest or bilinear)
 #[allow(dead_code)]
@@ -142,8 +147,9 @@ pub(crate) fn resize_blit(
     dst_w: u32,
     dst_h: u32,
     filter: FilterMethod,
+    rotation: u16,
 ) -> wgpu::Texture {
-    match filter {
+    let resized = match filter {
         FilterMethod::Lanczos3 => resize_kernel_two_pass(
             ctx, src, dst_w, dst_h,
             include_str!("shaders/lanczos3.wgsl"),
@@ -153,7 +159,182 @@ pub(crate) fn resize_blit(
             include_str!("shaders/catmull_rom.wgsl"),
         ),
         _ => resize_sampler(ctx, src, dst_w, dst_h, filter),
+    };
+
+    if rotation % 360 == 0 {
+        resized
+    } else {
+        rotate_texture(ctx, &resized, rotation)
     }
+}
+
+/// Rotate `src` by `rotation` degrees (must be 90, 180, or 270; others → identity).
+///
+/// For 90° and 270° the output texture dimensions are swapped relative to `src`.
+/// Uses a pixel-exact `textureLoad` shader — no sampler blur.
+pub(crate) fn rotate_texture(
+    ctx: &GpuContext,
+    src: &wgpu::Texture,
+    rotation: u16,
+) -> wgpu::Texture {
+    let src_w = src.width();
+    let src_h = src.height();
+
+    let rot_code = match rotation % 360 {
+        90  => 1u32,
+        180 => 2u32,
+        270 => 3u32,
+        _   => 0u32,
+    };
+    let (out_w, out_h) = if rot_code == 1 || rot_code == 3 {
+        (src_h, src_w)
+    } else {
+        (src_w, src_h)
+    };
+
+    let dst = ctx.device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d { width: out_w, height: out_h, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+
+    // Uniform: { src_w, src_h, rotation, _pad } = 16 bytes
+    let mut ub = [0u8; 16];
+    ub[0..4].copy_from_slice(&src_w.to_ne_bytes());
+    ub[4..8].copy_from_slice(&src_h.to_ne_bytes());
+    ub[8..12].copy_from_slice(&rot_code.to_ne_bytes());
+
+    let uniform_buf = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 16,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    ctx.queue.write_buffer(&uniform_buf, 0, &ub);
+
+    let shader = ctx.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rotate.wgsl").into()),
+    });
+
+    let bgl = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = ctx.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
+    });
+
+    let pipeline = ctx.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            strip_index_format: None,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    });
+
+    let src_view = src.create_view(&wgpu::TextureViewDescriptor::default());
+    let dst_view = dst.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&src_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform_buf,
+                    offset: 0,
+                    size: None,
+                }),
+            },
+        ],
+    });
+
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &dst_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        rpass.set_pipeline(&pipeline);
+        rpass.set_bind_group(0, &bind_group, &[]);
+        rpass.draw(0..4, 0..1);
+    }
+    ctx.queue.submit(std::iter::once(encoder.finish()));
+
+    dst
 }
 
 /// Sampler-based blit for `Nearest`, `Triangle`, and `Gaussian`.
