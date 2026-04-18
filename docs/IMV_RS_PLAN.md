@@ -585,7 +585,7 @@ Each sub-step below ends in a verified state: `cargo build --workspace --feature
 
 #### 8.2 — GpuContext: device and queue initialization
 
-- [ ] Implement `libimgvwr::renderer::gpu::GpuContext`:
+- [x] Implement `libimgvwr::renderer::gpu::GpuContext`:
 
 ```rust
 pub struct GpuContext {

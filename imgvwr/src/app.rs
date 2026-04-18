@@ -14,6 +14,8 @@ use libimgvwr::{
     viewport::ViewportState,
     wayland::{InputEvent, WaylandContext},
 };
+#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+use libimgvwr::renderer::gpu::GpuContext;
 
 use crate::settings::AppSettings;
 
@@ -204,6 +206,9 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         filter = ?settings.filter,
         "imgvwr starting"
     );
+
+    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+    let _gpu_ctx = GpuContext::new()?;
 
     let mut navigator = Navigator::from_path(&settings.paths[0])?;
     let mut image = loader::load(navigator.current())?;
