@@ -731,8 +731,8 @@ impl GpuContext {
     /// Initialise a GPU context backed by a Wayland swapchain.
     ///
     /// `display_ptr` is the raw `*mut wl_display` and `surface_ptr` is the raw
-    /// `*mut wl_surface` obtained from [`WaylandContext::display_ptr`] /
-    /// [`WaylandContext::surface_ptr`]. Both must remain valid for the lifetime
+    /// `*mut wl_surface` obtained from [`crate::wayland::WaylandContext::display_ptr`] /
+    /// [`crate::wayland::WaylandContext::surface_ptr`]. Both must remain valid for the lifetime
     /// of this `GpuContext`.
     ///
     /// Returns `Err` if no suitable adapter or the swapchain cannot be
