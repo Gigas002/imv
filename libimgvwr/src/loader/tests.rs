@@ -15,6 +15,39 @@ fn load_png_4x4() {
     assert_eq!(img.height(), 4);
 }
 
+#[cfg(feature = "jpeg")]
+#[test]
+fn load_jpeg_4x4() {
+    let jpeg_bytes = include_bytes!("../../tests/fixtures/4x4.jpg");
+    let mut tmp = Builder::new().suffix(".jpg").tempfile().unwrap();
+    tmp.write_all(jpeg_bytes).unwrap();
+    let img = load(tmp.path()).unwrap();
+    assert_eq!(img.width(), 4);
+    assert_eq!(img.height(), 4);
+}
+
+#[cfg(feature = "webp")]
+#[test]
+fn load_webp_4x4() {
+    let webp_bytes = include_bytes!("../../tests/fixtures/4x4.webp");
+    let mut tmp = Builder::new().suffix(".webp").tempfile().unwrap();
+    tmp.write_all(webp_bytes).unwrap();
+    let img = load(tmp.path()).unwrap();
+    assert_eq!(img.width(), 4);
+    assert_eq!(img.height(), 4);
+}
+
+#[cfg(feature = "avif")]
+#[test]
+fn load_avif_4x4() {
+    let avif_bytes = include_bytes!("../../tests/fixtures/4x4.avif");
+    let mut tmp = Builder::new().suffix(".avif").tempfile().unwrap();
+    tmp.write_all(avif_bytes).unwrap();
+    let img = load(tmp.path()).unwrap();
+    assert_eq!(img.width(), 4);
+    assert_eq!(img.height(), 4);
+}
+
 #[test]
 fn load_unsupported_format() {
     let mut tmp = Builder::new().suffix(".xyz").tempfile().unwrap();

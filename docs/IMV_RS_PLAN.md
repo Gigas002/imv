@@ -718,9 +718,9 @@ pub fn render(
 
 Each sub-step is independent; do them in any order.
 
-- [ ] **9.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
-- [ ] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
-- [ ] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
+- [x] **9.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
+- [x] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
+- [x] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; test `4x4.avif`. Note: `image/avif` is encode-only; decoding uses `image/avif-native` (pure-Rust `dav1d` — no system `libavif` required). Feature updated in `libimgvwr/Cargo.toml` accordingly.
 - [ ] **9.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §10).
 - [ ] **9.4** Background color config: add `background_color: [u8; 3]` (RGB) to `imgvwr::config::ViewerConfig` with default `[0, 0, 0]`; pass it into `renderer::render()` as a fill color parameter (replace the hardcoded `0x00` initialiser in the output buffer).
 - [ ] **9.5** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
@@ -734,11 +734,7 @@ These are **not planned** for v1. Document here to avoid scope creep.
 
 - **JPEG XL** (`jxl` feature): add once `image-rs` jxl support is stable or via `jxl-oxide` crate.
 - **dmabuf zero-copy** (`zwp_linux_dmabuf_v1`): instead of GPU→CPU readback→SHM, export the wgpu output texture as a DMA-BUF and attach it to the Wayland surface directly. Eliminates the PCIe readback entirely. Requires `zwp-linux-dmabuf-v1` protocol and `wgpu` texture export via `VkImage` handle.
-- **Pinch-to-zoom**: `zwp-pointer-gestures-v1` for trackpad pinch events.
-- **`cargo deny`**: add `deny.toml` + `deny.yml` CI workflow; license allowlist, advisory check.
 - **Shell completions**: `clap_complete` for `imgvwr` — fish/zsh/bash.
-- **Deploy enablement**: enable `deploy.yml` for release tags.
-- **Additional formats**: only if image-rs gains support without new C dependencies and minimal new code.
 
 ---
 
