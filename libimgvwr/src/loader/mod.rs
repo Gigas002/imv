@@ -7,7 +7,7 @@
 mod tests;
 
 use std::path::Path;
-#[cfg(any(feature = "gif", feature = "avif-anim"))]
+#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
 use std::time::Duration;
 
 use image::{DynamicImage, ImageError};
@@ -80,7 +80,13 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
     };
 
     let (width, height) = decoder_info.basic_info().size;
-    decoder_info.set_pixel_format(JxlPixelFormat::rgba8(0));
+    let num_extra = decoder_info.basic_info().extra_channels.len();
+    use jxl::api::{JxlColorType, JxlDataFormat};
+    decoder_info.set_pixel_format(JxlPixelFormat {
+        color_type: JxlColorType::Rgba,
+        color_data_format: Some(JxlDataFormat::U8 { bit_depth: 8 }),
+        extra_channel_format: vec![None; num_extra],
+    });
 
     // Phase 2 — parse frame header
     let mut decoder_frame = loop {
@@ -116,7 +122,7 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
 }
 
 /// A decoded animation: one or more frames with per-frame display durations.
-#[cfg(any(feature = "gif", feature = "avif-anim"))]
+#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
 pub struct AnimFrames {
     pub frames: Vec<(DynamicImage, Duration)>,
 }
@@ -174,8 +180,8 @@ pub fn load_gif_frames(path: &Path) -> Result<AnimFrames, LoadError> {
 pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
     use std::io::Cursor;
 
-    use mp4parse::{SampleEntry, TrackType, VideoCodecSpecific, read_mp4};
     use mp4parse::unstable::{CheckedInteger, create_sample_table};
+    use mp4parse::{SampleEntry, TrackType, VideoCodecSpecific, read_mp4};
 
     let file_bytes = std::fs::read(path).map_err(LoadError::Io)?;
 
@@ -188,7 +194,7 @@ pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
         .iter()
         .find(|t| {
             matches!(t.track_type, TrackType::Video | TrackType::Picture)
-                && t.stsd.as_ref().map_or(false, |stsd| {
+                && t.stsd.as_ref().is_some_and(|stsd| {
                     stsd.descriptions.iter().any(|d| {
                         matches!(
                             d,
@@ -206,10 +212,10 @@ pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
         .as_ref()
         .and_then(|stsd| {
             stsd.descriptions.iter().find_map(|d| {
-                if let SampleEntry::Video(v) = d {
-                    if let VideoCodecSpecific::AV1Config(av1c) = &v.codec_specific {
-                        return Some(av1c.config_obus().to_vec());
-                    }
+                if let SampleEntry::Video(v) = d
+                    && let VideoCodecSpecific::AV1Config(av1c) = &v.codec_specific
+                {
+                    return Some(av1c.config_obus().to_vec());
                 }
                 None
             })
@@ -273,8 +279,8 @@ pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
 
 #[cfg(feature = "avif-anim")]
 fn yuv_to_rgba(picture: &dav1d::Picture) -> Result<DynamicImage, LoadError> {
-    use dav1d::{PixelLayout, PlanarImageComponent};
     use dav1d::pixel::YUVRange;
+    use dav1d::{PixelLayout, PlanarImageComponent};
 
     let width = picture.width() as usize;
     let height = picture.height() as usize;
@@ -401,6 +407,104 @@ fn avif_anim_decode_err(msg: String) -> LoadError {
     LoadError::Decode(ImageError::Decoding(DecodingError::new(
         ImageFormatHint::Name("AVIF-anim".to_owned()),
         msg,
+    )))
+}
+
+/// Load all frames from an animated JXL file.
+///
+/// Returns `Err(LoadError::UnsupportedFormat)` when the file has no animation header
+/// (i.e. it is a still image), allowing callers to fall back to `load()`.
+#[cfg(feature = "jxl-anim")]
+pub fn load_jxl_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
+    use image::{ImageBuffer, Rgba};
+    use jxl::api::states::Initialized;
+    use jxl::api::{
+        JxlDecoder, JxlDecoderOptions, JxlOutputBuffer, JxlPixelFormat, ProcessingResult,
+    };
+
+    let file_bytes = std::fs::read(path).map_err(LoadError::Io)?;
+    let options = JxlDecoderOptions::default();
+
+    let mut decoder = JxlDecoder::<Initialized>::new(options);
+    let mut input = file_bytes.as_slice();
+    let mut decoder_info = loop {
+        match decoder.process(&mut input).map_err(jxl_err)? {
+            ProcessingResult::Complete { result } => break result,
+            ProcessingResult::NeedsMoreInput { fallback, .. } => decoder = fallback,
+        }
+    };
+
+    if decoder_info.basic_info().animation.is_none() {
+        return Err(LoadError::UnsupportedFormat);
+    }
+
+    let (width, height) = decoder_info.basic_info().size;
+    // Fold all extra channels (e.g. separate alpha) into the RGBA output by
+    // marking them as None (no separate buffer).
+    let num_extra = decoder_info.basic_info().extra_channels.len();
+    use jxl::api::{JxlColorType, JxlDataFormat};
+    let fmt = JxlPixelFormat {
+        color_type: JxlColorType::Rgba,
+        color_data_format: Some(JxlDataFormat::U8 { bit_depth: 8 }),
+        extra_channel_format: vec![None; num_extra],
+    };
+    decoder_info.set_pixel_format(fmt);
+    let stride = width * 4;
+    let mut frames = Vec::new();
+
+    loop {
+        // Parse frame header: WithImageInfo → WithFrameInfo
+        let mut decoder_frame = loop {
+            match decoder_info.process(&mut input).map_err(jxl_err)? {
+                ProcessingResult::Complete { result } => break result,
+                ProcessingResult::NeedsMoreInput { fallback, .. } => decoder_info = fallback,
+            }
+        };
+
+        // Decode pixels: WithFrameInfo → WithImageInfo
+        let mut pixel_buf = vec![0u8; height * stride];
+        decoder_info = loop {
+            let out = JxlOutputBuffer::new(&mut pixel_buf, height, stride);
+            match decoder_frame
+                .process(&mut input, &mut [out])
+                .map_err(jxl_err)?
+            {
+                ProcessingResult::Complete { result } => break result,
+                ProcessingResult::NeedsMoreInput { fallback, .. } => decoder_frame = fallback,
+            }
+        };
+
+        let duration_ms = decoder_info
+            .scanned_frames()
+            .last()
+            .map(|f| f.duration_ms)
+            .unwrap_or(100.0);
+        let duration = Duration::from_millis((duration_ms.max(10.0)) as u64);
+
+        let img = ImageBuffer::<Rgba<u8>, _>::from_raw(width as u32, height as u32, pixel_buf)
+            .map(DynamicImage::ImageRgba8)
+            .ok_or_else(|| jxl_anim_err("buffer size mismatch"))?;
+
+        frames.push((img, duration));
+
+        if !decoder_info.has_more_frames() {
+            break;
+        }
+    }
+
+    if frames.is_empty() {
+        return Err(LoadError::UnsupportedFormat);
+    }
+
+    Ok(AnimFrames { frames })
+}
+
+#[cfg(feature = "jxl-anim")]
+fn jxl_anim_err(msg: &str) -> LoadError {
+    use image::error::{DecodingError, ImageFormatHint};
+    LoadError::Decode(ImageError::Decoding(DecodingError::new(
+        ImageFormatHint::Name("JXL-anim".to_owned()),
+        msg.to_owned(),
     )))
 }
 

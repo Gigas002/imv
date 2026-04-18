@@ -71,6 +71,18 @@ fn load_gif_animated_4x4() {
     assert_eq!(result.frames[0].0.height(), 4);
 }
 
+#[cfg(feature = "jxl-anim")]
+#[test]
+fn load_jxl_anim_4x4() {
+    let jxl_bytes = include_bytes!("../../tests/fixtures/4x4_anim.jxl");
+    let mut tmp = Builder::new().suffix(".jxl").tempfile().unwrap();
+    tmp.write_all(jxl_bytes).unwrap();
+    let result = super::load_jxl_anim_frames(tmp.path()).unwrap();
+    assert!(!result.frames.is_empty());
+    assert_eq!(result.frames[0].0.width(), 4);
+    assert_eq!(result.frames[0].0.height(), 4);
+}
+
 #[cfg(feature = "avif-anim")]
 #[test]
 fn load_avif_anim_4x4() {

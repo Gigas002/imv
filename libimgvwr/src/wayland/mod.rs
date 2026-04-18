@@ -301,7 +301,7 @@ impl WaylandContext {
     /// the animation loop can call `tick()` on a regular cadence even without
     /// user input.
     pub fn dispatch(&mut self, timeout_ms: i32) -> io::Result<()> {
-        #[cfg(any(feature = "gif", feature = "avif-anim"))]
+        #[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
         {
             use std::os::fd::AsFd;
             use std::os::unix::io::AsRawFd;
@@ -332,7 +332,7 @@ impl WaylandContext {
                 .map_err(io::Error::other)
         }
 
-        #[cfg(not(any(feature = "gif", feature = "avif-anim")))]
+        #[cfg(not(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim")))]
         {
             let _ = timeout_ms;
             self.event_queue
