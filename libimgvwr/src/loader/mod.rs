@@ -374,11 +374,7 @@ pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
         let img = yuv_to_rgba(&picture)?;
 
         let ticks = (indice.end_composition.0 - indice.start_composition.0).max(0) as u64;
-        let ms = if timescale == 0 {
-            100
-        } else {
-            (ticks * 1000 / timescale).max(10)
-        };
+        let ms = (ticks * 1000).checked_div(timescale).unwrap_or(100).max(10);
 
         frames.push((img, Duration::from_millis(ms)));
     }
