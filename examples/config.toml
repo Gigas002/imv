@@ -44,6 +44,9 @@ rotate_left = "["
 # Rotate image 90° clockwise.
 rotate_right = "]"
 
+# Delete the current file from disk and advance to the next image.
+delete = "Delete"
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 # Requires feature "logging". The RUST_LOG environment variable overrides this
 # value when set.

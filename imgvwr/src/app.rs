@@ -7,7 +7,7 @@ use std::path::Path;
 
 use image::DynamicImage;
 use libimgvwr::{
-    keybinds::Action,
+    keybinds::{Action, Keysym},
     loader,
     navigator::Navigator,
     renderer,
@@ -17,6 +17,7 @@ use libimgvwr::{
 
 use crate::settings::AppSettings;
 
+#[derive(Default)]
 struct EventOutcome {
     dirty: bool,
     quit: bool,
@@ -32,8 +33,6 @@ fn make_title(path: &Path) -> String {
     format!("{name} — imgvwr")
 }
 
-/// Compute the largest scale that fits `img` inside `window` without cropping,
-/// clamped to `[min_scale, max_scale]`.
 fn fit_scale(img: &DynamicImage, window: (u32, u32), min_scale: f32, max_scale: f32) -> f32 {
     let sw = window.0 as f32 / img.width() as f32;
     let sh = window.1 as f32 / img.height() as f32;
@@ -55,6 +54,130 @@ fn navigate_to(path: PathBuf, image: &mut DynamicImage, viewport: &mut ViewportS
     }
 }
 
+fn on_navigate_prev(
+    navigator: &mut Navigator,
+    image: &mut DynamicImage,
+    viewport: &mut ViewportState,
+) -> EventOutcome {
+    let path = navigator.prev().to_path_buf();
+    let success = navigate_to(path, image, viewport);
+    EventOutcome {
+        dirty: success,
+        navigated: success,
+        quit: false,
+    }
+}
+
+fn on_navigate_next(
+    navigator: &mut Navigator,
+    image: &mut DynamicImage,
+    viewport: &mut ViewportState,
+) -> EventOutcome {
+    let path = navigator.next().to_path_buf();
+    let success = navigate_to(path, image, viewport);
+    EventOutcome {
+        dirty: success,
+        navigated: success,
+        quit: false,
+    }
+}
+
+fn on_rotate_left(viewport: &mut ViewportState) -> EventOutcome {
+    viewport.rotate_left();
+    debug!(rotation = viewport.rotation, "rotated left");
+    EventOutcome {
+        dirty: true,
+        ..Default::default()
+    }
+}
+
+fn on_rotate_right(viewport: &mut ViewportState) -> EventOutcome {
+    viewport.rotate_right();
+    debug!(rotation = viewport.rotation, "rotated right");
+    EventOutcome {
+        dirty: true,
+        ..Default::default()
+    }
+}
+
+fn on_delete_file(
+    navigator: &mut Navigator,
+    image: &mut DynamicImage,
+    viewport: &mut ViewportState,
+) -> EventOutcome {
+    let path = navigator.current().to_path_buf();
+    match std::fs::remove_file(&path) {
+        Ok(()) => {
+            info!(path = %path.display(), "deleted file");
+            match navigator.remove_current() {
+                Some(next) => {
+                    let next = next.to_path_buf();
+                    let success = navigate_to(next, image, viewport);
+                    EventOutcome {
+                        dirty: success,
+                        navigated: success,
+                        quit: false,
+                    }
+                }
+                None => EventOutcome {
+                    quit: true,
+                    ..Default::default()
+                },
+            }
+        }
+        Err(e) => {
+            warn!(path = %path.display(), error = %e, "failed to delete file");
+            EventOutcome::default()
+        }
+    }
+}
+
+fn on_scroll(delta: f32, settings: &AppSettings, viewport: &mut ViewportState) -> EventOutcome {
+    viewport.zoom_by(
+        delta * settings.scale_step,
+        settings.min_scale,
+        settings.max_scale,
+    );
+    EventOutcome {
+        dirty: true,
+        ..Default::default()
+    }
+}
+
+fn on_pointer_motion(dx: f32, dy: f32, viewport: &mut ViewportState) -> EventOutcome {
+    viewport.pan(dx, dy);
+    EventOutcome {
+        dirty: true,
+        ..Default::default()
+    }
+}
+
+fn on_key_action(
+    sym: Keysym,
+    settings: &AppSettings,
+    navigator: &mut Navigator,
+    image: &mut DynamicImage,
+    viewport: &mut ViewportState,
+) -> EventOutcome {
+    if sym == settings.key_left {
+        on_navigate_prev(navigator, image, viewport)
+    } else if sym == settings.key_right {
+        on_navigate_next(navigator, image, viewport)
+    } else if let Some(action) = settings.keybind_map.lookup(sym) {
+        match action {
+            Action::Quit => EventOutcome {
+                quit: true,
+                ..Default::default()
+            },
+            Action::RotateLeft => on_rotate_left(viewport),
+            Action::RotateRight => on_rotate_right(viewport),
+            Action::DeleteFile => on_delete_file(navigator, image, viewport),
+        }
+    } else {
+        EventOutcome::default()
+    }
+}
+
 fn process_event(
     event: InputEvent,
     settings: &AppSettings,
@@ -62,55 +185,11 @@ fn process_event(
     image: &mut DynamicImage,
     viewport: &mut ViewportState,
 ) -> EventOutcome {
-    let mut dirty = false;
-    let mut quit = false;
-    let mut navigated = false;
-
     match event {
-        InputEvent::Key(sym) => {
-            if sym == settings.key_left {
-                let success = navigate_to(navigator.prev().to_path_buf(), image, viewport);
-                dirty = success;
-                navigated = success;
-            } else if sym == settings.key_right {
-                let success = navigate_to(navigator.next().to_path_buf(), image, viewport);
-                dirty = success;
-                navigated = success;
-            } else if let Some(action) = settings.keybind_map.lookup(sym) {
-                match action {
-                    Action::Quit => quit = true,
-                    Action::RotateLeft => {
-                        viewport.rotate_left();
-                        debug!(rotation = viewport.rotation, "rotated left");
-                        dirty = true;
-                    }
-                    Action::RotateRight => {
-                        viewport.rotate_right();
-                        debug!(rotation = viewport.rotation, "rotated right");
-                        dirty = true;
-                    }
-                }
-            }
-        }
-        InputEvent::Scroll(delta) => {
-            viewport.zoom_by(
-                delta * settings.scale_step,
-                settings.min_scale,
-                settings.max_scale,
-            );
-            dirty = true;
-        }
-        InputEvent::PointerMotion { dx, dy } => {
-            viewport.pan(dx, dy);
-            dirty = true;
-        }
-        InputEvent::PointerButton { .. } => {}
-    }
-
-    EventOutcome {
-        dirty,
-        quit,
-        navigated,
+        InputEvent::Key(sym) => on_key_action(sym, settings, navigator, image, viewport),
+        InputEvent::Scroll(delta) => on_scroll(delta, settings, viewport),
+        InputEvent::PointerMotion { dx, dy } => on_pointer_motion(dx, dy, viewport),
+        InputEvent::PointerButton { .. } => EventOutcome::default(),
     }
 }
 
@@ -133,7 +212,6 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
     let mut viewport = ViewportState::default();
     let mut wayland = WaylandContext::connect((800, 600), settings.decorations)?;
 
-    // Fit the first image to the negotiated window size.
     viewport.scale = fit_scale(
         &image,
         wayland.state.window_size,
@@ -181,8 +259,6 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
 
         if dirty {
             let (w, h) = wayland.state.window_size;
-            // Antialiasing = false overrides the configured filter with Nearest
-            // so the CPU cost of high-quality resampling is avoided.
             let effective_filter = if settings.antialiasing {
                 settings.filter
             } else {

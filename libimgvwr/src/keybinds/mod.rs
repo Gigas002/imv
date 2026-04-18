@@ -18,6 +18,7 @@ pub enum Action {
     Quit,
     RotateLeft,
     RotateRight,
+    DeleteFile,
 }
 
 /// Error returned when a key name cannot be resolved to a keysym.
@@ -51,12 +52,13 @@ pub struct KeybindMap {
 }
 
 impl KeybindMap {
-    /// Build the map from three pre-resolved keysyms.
-    pub fn new(quit: Keysym, rotate_left: Keysym, rotate_right: Keysym) -> Self {
-        let mut inner = HashMap::with_capacity(3);
+    /// Build the map from pre-resolved keysyms.
+    pub fn new(quit: Keysym, rotate_left: Keysym, rotate_right: Keysym, delete: Keysym) -> Self {
+        let mut inner = HashMap::with_capacity(4);
         inner.insert(quit, Action::Quit);
         inner.insert(rotate_left, Action::RotateLeft);
         inner.insert(rotate_right, Action::RotateRight);
+        inner.insert(delete, Action::DeleteFile);
         KeybindMap { inner }
     }
 

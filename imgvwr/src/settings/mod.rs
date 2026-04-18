@@ -83,7 +83,8 @@ fn build_keybind_map(keybindings: &Keybindings) -> KeybindMap {
             .unwrap_or("bracketright"),
         "bracketright",
     );
-    KeybindMap::new(quit, rotate_left, rotate_right)
+    let delete = resolve_keysym(keybindings.delete.as_deref().unwrap_or("Delete"), "Delete");
+    KeybindMap::new(quit, rotate_left, rotate_right, delete)
 }
 
 #[cfg(not(feature = "keybinds"))]
@@ -92,6 +93,7 @@ fn build_keybind_map(_keybindings: &Keybindings) -> KeybindMap {
         keysym_from_str("q").expect("q keysym must resolve"),
         keysym_from_str("bracketleft").expect("bracketleft keysym must resolve"),
         keysym_from_str("bracketright").expect("bracketright keysym must resolve"),
+        keysym_from_str("Delete").expect("Delete keysym must resolve"),
     )
 }
 

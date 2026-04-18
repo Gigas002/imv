@@ -141,6 +141,7 @@ impl Config {
                 quit: o.quit.or(b.quit),
                 rotate_left: o.rotate_left.or(b.rotate_left),
                 rotate_right: o.rotate_right.or(b.rotate_right),
+                delete: o.delete.or(b.delete),
             }),
             logging: merge_section(base.logging, overlay.logging, |b, o| Logging {
                 level: o.level.or(b.level),
@@ -215,6 +216,7 @@ pub struct Keybindings {
     pub quit: Option<String>,
     pub rotate_left: Option<String>,
     pub rotate_right: Option<String>,
+    pub delete: Option<String>,
 }
 
 impl Default for Keybindings {
@@ -223,6 +225,7 @@ impl Default for Keybindings {
             quit: Some("q".to_string()),
             rotate_left: Some("[".to_string()),
             rotate_right: Some("]".to_string()),
+            delete: Some("Delete".to_string()),
         }
     }
 }
