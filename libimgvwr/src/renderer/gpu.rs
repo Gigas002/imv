@@ -1,6 +1,8 @@
 // GPU-accelerated rendering pipeline via wgpu (Vulkan preferred, GL/EGL fallback).
 // Compiled only when `gpu-vulkan` or `gpu-gles` feature is enabled.
 
+use image::DynamicImage;
+
 /// Errors produced during GPU initialisation.
 #[derive(Debug)]
 pub enum GpuError {
@@ -76,4 +78,55 @@ impl GpuContext {
             Ok(Self { device, queue })
         })
     }
+}
+
+/// Upload a [`DynamicImage`] to a GPU texture.
+///
+/// The returned texture uses `Rgba8Unorm` format and is suitable for
+/// sampling in a render or compute pass.
+#[allow(dead_code)]
+pub(crate) fn upload_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    img: &DynamicImage,
+) -> wgpu::Texture {
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba.as_raw(),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    texture
 }

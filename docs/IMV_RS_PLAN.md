@@ -611,7 +611,7 @@ impl GpuContext {
 
 #### 8.3 — Image upload: DynamicImage → wgpu Texture
 
-- [ ] In `libimgvwr::renderer::gpu`, add:
+- [x] In `libimgvwr::renderer::gpu`, add:
 
 ```rust
 fn upload_texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &DynamicImage) -> wgpu::Texture
