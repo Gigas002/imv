@@ -352,7 +352,10 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         "imgvwr starting"
     );
 
-    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+    #[cfg(all(
+        any(feature = "gpu-vulkan", feature = "gpu-gles"),
+        not(feature = "dmabuf")
+    ))]
     let gpu_ctx = GpuContext::new()?;
 
     let mut navigator = Navigator::from_path(&settings.paths[0])?;
@@ -361,6 +364,15 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut viewport = ViewportState::default();
     let mut wayland = WaylandContext::connect((800, 600), settings.decorations)?;
+
+    // dmabuf: init GPU context after surface is created, using Wayland handles.
+    #[cfg(feature = "dmabuf")]
+    let mut gpu_ctx = {
+        let (w, h) = wayland.state.window_size;
+        GpuContext::new_with_surface(wayland.display_ptr(), wayland.surface_ptr(), w, h)?
+    };
+    #[cfg(feature = "dmabuf")]
+    let mut last_surface_size = wayland.state.window_size;
 
     viewport.scale = fit_scale(
         image.current(),
@@ -422,16 +434,29 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 renderer::FilterMethod::Nearest
             };
-            let pixels = renderer::render(
-                image.current(),
-                &viewport,
-                w,
-                h,
-                effective_filter,
-                #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
-                &gpu_ctx,
-            );
-            wayland.commit_frame(&pixels, w, h)?;
+
+            #[cfg(feature = "dmabuf")]
+            {
+                if (w, h) != last_surface_size {
+                    gpu_ctx.configure_surface(w, h);
+                    last_surface_size = (w, h);
+                }
+                gpu_ctx.render_and_present(image.current(), &viewport, w, h, effective_filter)?;
+            }
+
+            #[cfg(not(feature = "dmabuf"))]
+            {
+                let pixels = renderer::render(
+                    image.current(),
+                    &viewport,
+                    w,
+                    h,
+                    effective_filter,
+                    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+                    &gpu_ctx,
+                );
+                wayland.commit_frame(&pixels, w, h)?;
+            }
         }
 
         if wayland.state.closed {

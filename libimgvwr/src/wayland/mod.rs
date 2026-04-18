@@ -354,6 +354,34 @@ impl WaylandContext {
         }
     }
 
+    /// Raw `wl_display *` pointer for wgpu surface creation.
+    ///
+    /// SAFETY: The returned pointer is valid for the lifetime of this
+    /// `WaylandContext`. Must not be used after `WaylandContext` is dropped.
+    #[cfg(feature = "dmabuf")]
+    pub fn display_ptr(&self) -> std::ptr::NonNull<std::ffi::c_void> {
+        let ptr = self.conn.backend().display_ptr().cast::<std::ffi::c_void>();
+        std::ptr::NonNull::new(ptr).expect("wl_display must not be null")
+    }
+
+    /// Raw `wl_surface *` pointer for wgpu surface creation.
+    ///
+    /// SAFETY: The returned pointer is valid for the lifetime of this
+    /// `WaylandContext`. Must not be used after `WaylandContext` is dropped.
+    #[cfg(feature = "dmabuf")]
+    pub fn surface_ptr(&self) -> std::ptr::NonNull<std::ffi::c_void> {
+        use wayland_client::Proxy;
+        let ptr = self
+            .state
+            .surface
+            .as_ref()
+            .expect("wl_surface not yet created")
+            .id()
+            .as_ptr()
+            .cast::<std::ffi::c_void>();
+        std::ptr::NonNull::new(ptr).expect("wl_surface must not be null")
+    }
+
     /// Set the XDG toplevel window title.
     ///
     /// Only available when the `decorations` feature is enabled. The title is

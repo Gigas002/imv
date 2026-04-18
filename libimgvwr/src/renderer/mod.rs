@@ -147,27 +147,66 @@ fn gpu_render(
     filter: FilterMethod,
     gpu: &gpu::GpuContext,
 ) -> Vec<u8> {
+    match gpu_render_inner(src, viewport, dst_w, dst_h, scaled_w, scaled_h, filter, gpu) {
+        None => vec![0u8; (dst_w * dst_h * 4) as usize],
+        Some((out, win_x, win_y)) => {
+            let (target_w, target_h) = (out.width(), out.height());
+            let pixels = gpu::readback(gpu, &out, target_w, target_h);
+
+            if win_x == 0 && win_y == 0 && target_w == dst_w && target_h == dst_h {
+                return pixels;
+            }
+
+            let mut buf = vec![0u8; (dst_w * dst_h * 4) as usize];
+            let copy_w = target_w.min(dst_w - win_x) as usize;
+            let copy_h = target_h.min(dst_h - win_y);
+            for sy in 0..copy_h {
+                let src_off = (sy * target_w) as usize * 4;
+                let dst_off = ((win_y + sy) * dst_w + win_x) as usize * 4;
+                buf[dst_off..dst_off + copy_w * 4]
+                    .copy_from_slice(&pixels[src_off..src_off + copy_w * 4]);
+            }
+            buf
+        }
+    }
+}
+
+/// Compute and upload the visible region of `src` for the current viewport.
+///
+/// Returns `Some((output_texture, win_x, win_y))` where the texture holds the
+/// rendered visible pixels and `(win_x, win_y)` is its top-left position in
+/// the destination window. Returns `None` when the image is completely
+/// off-screen.
+#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn gpu_render_inner(
+    src: &DynamicImage,
+    viewport: &ViewportState,
+    dst_w: u32,
+    dst_h: u32,
+    scaled_w: u32,
+    scaled_h: u32,
+    filter: FilterMethod,
+    gpu: &gpu::GpuContext,
+) -> Option<(wgpu::Texture, u32, u32)> {
     let scale = viewport.scale;
     let rotation = viewport.rotation;
 
-    // Post-rotation footprint: 90°/270° swaps the width and height axes.
     let (rot_w, rot_h) = match rotation {
         90 | 270 => (scaled_h, scaled_w),
         _ => (scaled_w, scaled_h),
     };
 
-    // Top-left of the rotated image in window coordinates.
     let blit_x = dst_w as i32 / 2 - rot_w as i32 / 2 + viewport.offset.0 as i32;
     let blit_y = dst_h as i32 / 2 - rot_h as i32 / 2 + viewport.offset.1 as i32;
 
-    // Visible region in rotated-image coordinates.
     let vis_sx0 = (-blit_x).max(0) as u32;
     let vis_sy0 = (-blit_y).max(0) as u32;
     let vis_sx1 = rot_w.min((dst_w as i32 - blit_x).max(0) as u32);
     let vis_sy1 = rot_h.min((dst_h as i32 - blit_y).max(0) as u32);
 
     if vis_sx1 <= vis_sx0 || vis_sy1 <= vis_sy0 {
-        return vec![0u8; (dst_w * dst_h * 4) as usize];
+        return None;
     }
 
     let vis_w = vis_sx1 - vis_sx0;
@@ -175,10 +214,6 @@ fn gpu_render(
     let win_x = blit_x.max(0) as u32;
     let win_y = blit_y.max(0) as u32;
 
-    // Find the source crop and GPU resize target for the visible window region.
-    // After resize_blit(crop, resize_w, resize_h, rotation) the output is vis_w × vis_h.
-    // The crop is always bounded by the source image; the resize target is bounded by
-    // the window size, so neither ever exceeds max_texture_dim.
     let (crop_x, crop_y, crop_w, crop_h, resize_w, resize_h) = visible_source_crop(
         rotation,
         vis_sx0,
@@ -197,23 +232,7 @@ fn gpu_render(
     let crop = src.crop_imm(crop_x, crop_y, crop_w, crop_h);
     let tex = gpu::upload_texture(&gpu.device, &gpu.queue, &crop);
     let out = gpu::resize_blit(gpu, &tex, resize_w, resize_h, filter, rotation);
-    let (target_w, target_h) = (out.width(), out.height());
-    let pixels = gpu::readback(gpu, &out, target_w, target_h);
-
-    // Fast path: rendered region exactly fills the entire window.
-    if win_x == 0 && win_y == 0 && target_w == dst_w && target_h == dst_h {
-        return pixels;
-    }
-
-    let mut buf = vec![0u8; (dst_w * dst_h * 4) as usize];
-    let copy_w = target_w.min(dst_w - win_x) as usize;
-    let copy_h = target_h.min(dst_h - win_y);
-    for sy in 0..copy_h {
-        let src_off = (sy * target_w) as usize * 4;
-        let dst_off = ((win_y + sy) * dst_w + win_x) as usize * 4;
-        buf[dst_off..dst_off + copy_w * 4].copy_from_slice(&pixels[src_off..src_off + copy_w * 4]);
-    }
-    buf
+    Some((out, win_x, win_y))
 }
 
 /// Compute the source image crop and GPU resize dimensions needed to produce
