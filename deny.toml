@@ -11,6 +11,8 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "NCSA",
+    "CC0-1.0",
+    "ISC",
 ]
 confidence-threshold = 0.8
 private = { ignore = true }

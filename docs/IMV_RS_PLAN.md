@@ -12,7 +12,7 @@ This is **not** a port of the C `imv` codebase. It is a **clean-room Rust rewrit
 
 - **Minimal image viewer** for Wayland: open image file(s), navigate prev/next in directory, zoom, pan, rotate (viewer-only — no file writes).
 - **Two-crate workspace**: `libimgvwr` (library — engine, viewport, renderer, Wayland surface) and `imgvwr` (CLI binary — config parsing, arg parsing, event loop wiring).
-- **No OpenGL, no Vulkan for MVP**: use **Wayland SHM** (shared memory buffers) with **software rendering via `image-rs` / `imageops`** for transforms (scale, rotate). This eliminates the entire GPU stack as a dependency for v1. If GPU acceleration is needed later, Vulkan via `ash` is the preferred path (see §9).
+- **No OpenGL**: use **Wayland SHM** (shared memory buffers) with **software rendering via `image-rs` / `imageops`** for transforms (scale, rotate). This is the default path. Optional GPU acceleration via `wgpu` is gated behind the `gpu` Cargo feature (Phase 8). `wgpu` prefers Vulkan; if Vulkan is absent it falls back to its GL backend (which uses EGL internally) — but no OpenGL or EGL code is written directly in this codebase.
 - **image-rs for all decoding**: no format-specific C libraries pulled in by this crate directly. PNG only by default; JPEG/WebP/AVIF/JXL behind optional Cargo features (§4).
 - **Wayland-only**: no X11, no XWayland, no platform abstraction layer.
 - **No IPC**: no Unix socket, no remote control binary.
@@ -249,6 +249,8 @@ webp  = ["image/webp"]
 avif  = ["image/avif"]
 # jxl = ["image/jxl"]       # future; uncomment when image-rs jxl is stable
 decorations = []             # enables xdg-decoration protocol wiring + window title
+gpu-vulkan  = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]  # GPU via Vulkan (Phase 8)
+gpu-gles    = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]  # GPU via GLES/EGL (Phase 8)
 ```
 
 **Rules:**
@@ -256,6 +258,7 @@ decorations = []             # enables xdg-decoration protocol wiring + window t
 - `default` = only PNG. End users opt in to additional formats at build time.
 - All format features forward to the corresponding `image` crate feature.
 - `decorations`: when disabled, window title is never set; `xdg-decoration` negotiation is skipped entirely. No `#[cfg]` spaghetti — use a stub module pattern (see §5.3 testing note).
+- `gpu-vulkan` and `gpu-gles` are **independent and mutually exclusive by convention** — enabling both compiles both wgpu backends (larger binary, no other harm). Packagers pick one. Common GPU code is gated on `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]`.
 - Every feature combination must compile: test `--no-default-features`, `--all-features`, and `--features jpeg,webp` in CI.
 
 ### 4.2 `imgvwr` features
@@ -273,6 +276,8 @@ jpeg         = ["libimgvwr/jpeg"]
 webp         = ["libimgvwr/webp"]
 avif         = ["libimgvwr/avif"]
 decorations  = ["libimgvwr/decorations"]
+gpu-vulkan   = ["libimgvwr/gpu-vulkan"]
+gpu-gles     = ["libimgvwr/gpu-gles"]
 ```
 
 Packagers use `cargo build -p imgvwr --no-default-features --features "png,jpeg,webp"` etc.
@@ -539,26 +544,196 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ---
 
-### Phase 8 — Optional format features (non-default)
+### Phase 8 — GPU-accelerated rendering (`gpu` feature)
 
-Each sub-step is independent; do them in any order.
+**Design summary**: Replace the entire render pipeline with a `wgpu`-backed GPU pipeline, gated behind an optional `gpu` Cargo feature. The CPU/SHM path remains the default and is never removed. When `gpu` is compiled in, it is **always used** — there is no per-image or per-filter CPU fallback. If GPU init fails at runtime, the application exits with an error (not a silent fallback). The rendered result is read back to CPU as `Vec<u8>` and written to the existing SHM buffer (no change to the Wayland commit path).
 
-- [ ] **8.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
-- [ ] **8.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
-- [ ] **8.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
-- [ ] **8.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §9).
-- [ ] **8.4** Background color config: add `background_color: [u8; 3]` (RGB) to `imgvwr::config::ViewerConfig` with default `[0, 0, 0]`; pass it into `renderer::render()` as a fill color parameter (replace the hardcoded `0x00` initialiser in the output buffer).
-- [ ] **8.5** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
-- [ ] **8.6** Verify `--all-features` compiles and tests pass.
+**Technology**: `wgpu` (MIT/Apache-2.0). Backend preference: **Vulkan first, GL (EGL) second**. If Vulkan is unavailable (driver missing, VM, etc.) wgpu falls back to its GL backend, which uses EGL under the hood — this requires zero extra code beyond a one-line backend mask. No OpenGL code is written directly; EGL is only involved if wgpu selects the GL backend. `pollster` (MIT) blocks on async wgpu init without a Tokio runtime.
+
+**New files**:
+
+- `libimgvwr/src/renderer/gpu.rs` — all GPU types and functions (compiled only under `gpu-vulkan` or `gpu-gles`)
+- `libimgvwr/src/renderer/shaders/blit.wgsl` — full-screen quad vertex + fragment shader (sampler-based resize)
+- `libimgvwr/src/renderer/shaders/lanczos3.wgsl` — compute shader: two-pass separable Lanczos3 convolution
+- `libimgvwr/src/renderer/shaders/catmull_rom.wgsl` — compute shader: two-pass separable CatmullRom convolution
+
+Each sub-step below ends in a verified state: `cargo build --workspace --features gpu-vulkan`, `cargo clippy --workspace --features gpu-vulkan -- -D warnings`, and `cargo fmt --check` all pass.
+
+#### 8.1 — Feature scaffold
+
+- [x] Add to `libimgvwr/Cargo.toml`:
+
+  ```toml
+  [features]
+  gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
+  gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
+
+  [dependencies]
+  wgpu     = { version = "29", optional = true, default-features = false }
+  pollster = { version = "0.4", optional = true }
+  ```
+
+- Add to `imgvwr/Cargo.toml` `[features]`:
+  ```toml
+  gpu-vulkan = ["libimgvwr/gpu-vulkan"]
+  gpu-gles   = ["libimgvwr/gpu-gles"]
+  ```
+- Create `libimgvwr/src/renderer/gpu.rs` as an empty stub.
+- Reference it from `libimgvwr/src/renderer/mod.rs`: `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))] pub mod gpu;`
+
+**Verify**: `cargo build --workspace`, `cargo build --workspace --features gpu-vulkan`, `cargo build --workspace --features gpu-gles`, and `cargo build --workspace --no-default-features` all compile. ✓
+
+#### 8.2 — GpuContext: device and queue initialization
+
+- [x] Implement `libimgvwr::renderer::gpu::GpuContext`:
+
+```rust
+pub struct GpuContext {
+    device: wgpu::Device,
+    queue:  wgpu::Queue,
+}
+
+impl GpuContext {
+    /// Returns `Err` if no suitable adapter is found; caller exits the process.
+    pub fn new() -> Result<Self, GpuError>
+}
+```
+
+- Use `pollster::block_on` to drive async init.
+- `wgpu::Instance::new` with `backends: Backends::VULKAN | Backends::GL`. wgpu selects Vulkan if available; falls back to the GL backend (EGL-based) automatically — no extra code required.
+- `instance.request_adapter` with `PowerPreference::HighPerformance`. Return `Err(GpuError::NoAdapter)` if `None`.
+- `adapter.request_device` with default limits and no extra features.
+- Log selected backend and adapter name at `tracing::info!` level.
+
+`imgvwr::main`: call `GpuContext::new()` at startup; on `Err`, print the error and exit. No `Option` — when the `gpu` feature is compiled in, the GPU is non-negotiable.
+
+**Verify**: build + clippy clean with `--features gpu-vulkan`, `--features gpu-gles`, and without either.
+
+#### 8.3 — Image upload: DynamicImage → wgpu Texture
+
+- [x] In `libimgvwr::renderer::gpu`, add:
+
+```rust
+fn upload_texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &DynamicImage) -> wgpu::Texture
+```
+
+- `img.to_rgba8()` → raw bytes.
+- Create `wgpu::Texture` (`Rgba8Unorm`, `TextureUsages::TEXTURE_BINDING | COPY_DST`).
+- `queue.write_texture(...)` to copy pixel data.
+- Return owned texture; caller holds it for the duration of the frame.
+
+No tests (GPU hardware-dependent).
+
+#### 8.4 — GPU resize: sampler-based blit for Nearest / Triangle / Gaussian
+
+- [x] Implement:
+
+```rust
+fn resize_blit(
+    ctx: &GpuContext,
+    src: &wgpu::Texture,
+    dst_w: u32, dst_h: u32,
+    filter: FilterMethod,
+) -> wgpu::Texture
+```
+
+- Create output texture at `(dst_w, dst_h)` with `TextureUsages::RENDER_ATTACHMENT | COPY_SRC | TEXTURE_BINDING`.
+- Create `wgpu::Sampler`: `FilterMode::Linear` for `Triangle`/`Gaussian`, `FilterMode::Nearest` for `Nearest`.
+- Load `blit.wgsl` via `include_str!`; compile render pipeline (full-screen quad, one draw call).
+- Run a render pass into the output texture.
+- `Lanczos3` and `CatmullRom`: route to sampler linear at this step (overridden in 8.5).
+
+**Verify**: build + clippy clean.
+
+#### 8.5 — High-quality kernels: Lanczos3 and CatmullRom compute shaders
+
+- [x] Write two-pass separable convolution compute shaders:
+
+- `lanczos3.wgsl`: kernel radius 3 (`a=3`); `sinc(x) * sinc(x/a)` weights; horizontal pass → intermediate texture, vertical pass → output texture.
+- `catmull_rom.wgsl`: piecewise cubic kernel; same two-pass structure.
+- Each shader receives a uniform buffer: `src_size: vec2<u32>`, `dst_size: vec2<u32>`.
+- Embed via `include_str!` in `gpu.rs`.
+- Dispatch compute pipelines via `wgpu::ComputePass`; output `TextureUsages::STORAGE_BINDING | COPY_SRC`.
+- `resize_blit`: when `filter` is `Lanczos3` → dispatch `lanczos3.wgsl`; when `CatmullRom` → dispatch `catmull_rom.wgsl`.
+
+**Verify**: build + clippy clean. Manual smoke test: `Lanczos3` on a large image is visually sharp and noticeably faster than the CPU path.
+
+#### 8.6 — GPU rotation
+
+- [x] Extend the output of 8.4/8.5 to apply rotation:
+
+- Add a uniform `rotation: u32` (0/1/2/3 for 0°/90°/180°/270°) to the blit shader.
+- For 90°/270°: swap `dst_w`/`dst_h` when creating the output texture.
+- Rotation transform applied in the blit vertex shader via UV coordinate remap (no extra pass needed).
+- When `viewport.rotation == 0`: skip rotation uniform update (no-op).
+
+#### 8.7 — Readback: GPU Texture → Vec\<u8\> (ARGB)
+
+- [x] Implement:
+
+```rust
+fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8>
+```
+
+- Create `wgpu::Buffer` (`BufferUsages::COPY_DST | MAP_READ`), size `w * h * 4`.
+- Encode `copy_texture_to_buffer`; submit; `device.poll(Maintain::Wait)`.
+- Map buffer, read bytes slice, unmap.
+- Convert RGBA → ARGB (identical to CPU path; reuse the same byte-swap logic).
+- Return `Vec<u8>` directly passable to `wayland.commit_frame()`.
+
+#### 8.8 — Integration: dispatch CPU vs GPU in renderer
+
+- [x] Change `libimgvwr::renderer::render` signature:
+
+```rust
+pub fn render(
+    src: &DynamicImage,
+    viewport: &ViewportState,
+    dst_w: u32,
+    dst_h: u32,
+    filter: FilterMethod,
+    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))] gpu: &GpuContext,   // required, not Option
+) -> Vec<u8>
+```
+
+- Without `gpu` feature: existing CPU imageops path, signature unchanged.
+- With `gpu` feature: always routes through upload → resize (8.4/8.5 dispatch) → rotate (8.6) → readback (8.7). No CPU imageops call anywhere in this branch.
+- `imgvwr::main`: passes `&gpu_context` (initialized once at startup) on every render call.
+- Update existing renderer tests: under `#[cfg(not(any(feature = "gpu-vulkan", feature = "gpu-gles")))]` they test the CPU path unchanged; add a separate `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]` test block that constructs a `GpuContext` (skipped in CI without GPU via `#[ignore]` or env check).
+
+**Verify**: `cargo test --workspace` passes. `cargo build --workspace --features gpu-vulkan` compiles. Manual test: `cargo run -p imgvwr --features gpu-vulkan -- image.png` is smooth for all filter methods and all image sizes.
+
+#### 8.9 — CI additions
+
+- [x] GPU feature matrix: `--all-features` in `build.yml` and `fmt-clippy.yml` already covers both `gpu-vulkan` and `gpu-gles`; no Mesa packages required at compile time (wgpu uses dlopen).
+- Install Mesa Vulkan software rasterizer in CI system deps: `mesa-vulkan-drivers` (Debian/Ubuntu) or `vulkan-swrast` (Arch); install Mesa GLES for the `gpu-gles` entry.
+- Set env in the `gpu-vulkan` matrix entry: `WGPU_BACKEND=vulkan`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` (lavapipe).
+- `fmt-clippy.yml`: add `--features gpu-vulkan` to clippy matrix.
+
+**Verify**: CI green for all feature combinations including `--features gpu-vulkan` and `--features gpu-gles`.
 
 ---
 
-### Phase 9 — Future / post-1.0
+### Phase 9 — Optional format features (non-default)
+
+Each sub-step is independent; do them in any order.
+
+- [ ] **9.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
+- [ ] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
+- [ ] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
+- [ ] **9.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §10).
+- [ ] **9.4** Background color config: add `background_color: [u8; 3]` (RGB) to `imgvwr::config::ViewerConfig` with default `[0, 0, 0]`; pass it into `renderer::render()` as a fill color parameter (replace the hardcoded `0x00` initialiser in the output buffer).
+- [ ] **9.5** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
+- [ ] **9.6** Verify `--all-features` compiles and tests pass.
+
+---
+
+### Phase 10 — Future / post-1.0
 
 These are **not planned** for v1. Document here to avoid scope creep.
 
 - **JPEG XL** (`jxl` feature): add once `image-rs` jxl support is stable or via `jxl-oxide` crate.
-- **Vulkan rendering** (`vulkan` feature via `ash`): replace SHM software blit with Vulkan image + sampler for GPU-accelerated zoom/pan. Keep SHM path as fallback for compositors without Vulkan import support.
+- **dmabuf zero-copy** (`zwp_linux_dmabuf_v1`): instead of GPU→CPU readback→SHM, export the wgpu output texture as a DMA-BUF and attach it to the Wayland surface directly. Eliminates the PCIe readback entirely. Requires `zwp-linux-dmabuf-v1` protocol and `wgpu` texture export via `VkImage` handle.
 - **Pinch-to-zoom**: `zwp-pointer-gestures-v1` for trackpad pinch events.
 - **`cargo deny`**: add `deny.toml` + `deny.yml` CI workflow; license allowlist, advisory check.
 - **Shell completions**: `clap_complete` for `imgvwr` — fish/zsh/bash.
@@ -567,9 +742,9 @@ These are **not planned** for v1. Document here to avoid scope creep.
 
 ---
 
-### Phase 10 — Legacy C/Meson tree removal
+### Phase 11 — Legacy C/Meson tree removal
 
-Execute only after v1.0 ships and the Rust implementation is complete. The C source tree is kept as reference throughout all prior phases; removing it prematurely would destroy the implementation reference.
+Execute only after v1.0 ships and the Rust implementation (through Phase 9) is complete. The C source tree is kept as reference throughout all prior phases; removing it prematurely would destroy the implementation reference.
 
 Remove in a single commit. Do not touch `.claude/` or `docs/` or `examples/`.
 
@@ -675,7 +850,7 @@ build/
 /target
 ```
 
-**Verify**: repo root contains only Rust workspace files + `docs/` + `examples/` + CI config. `typos` still passes. `cargo build --workspace --all-features` still green.
+**Verify**: repo root contains only Rust workspace files + `docs/` + `examples/` + CI config. `typos` still passes. `cargo build --workspace --all-features` still green. `.typos.toml` `extend-exclude` no longer needs to cover `src/**`, `test/**`, etc.
 
 ---
 
@@ -694,9 +869,9 @@ For `imgvwr` with image-rs:
 - SHM blit to Wayland compositor is hardware-composited by the compositor itself
 - No GPU shader code required
 
-**When would Vulkan be needed?** Only if: (a) very large images (>20 MP) cause noticeable lag during zoom interactions, or (b) fractional-pixel pan smoothness matters. Neither is a v1 requirement. The Vulkan path is tracked in §9 without blocking v1.
+**When is GPU rendering needed?** When large images (>10 MP) cause noticeable lag during zoom, or when high-quality filter methods (Lanczos3, CatmullRom) are too slow on CPU. The optional `gpu` feature (Phase 8) addresses this via `wgpu`-backed GPU resize and rotation.
 
-**OpenGL is explicitly not preferred** over Vulkan if GPU rendering becomes necessary (per user requirement).
+**No OpenGL, no hand-written EGL**: `wgpu` selects Vulkan first; if unavailable it falls back to its GL backend (which uses EGL internally). No OpenGL or EGL code is written in this codebase — that complexity lives inside `wgpu`.
 
 ---
 
@@ -737,8 +912,9 @@ Update this file when:
 
 ### Revision history
 
-| Date       | Change                                                                                                                                                                                                                                                                                              |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-04-17 | Initial plan created                                                                                                                                                                                                                                                                                |
-| 2026-04-17 | Config struct moved entirely to `imgvwr`; `libimgvwr` has no config module. `FilterMethod` lives in `libimgvwr::renderer` as an API type. `viewport::zoom_by` takes scalar min/max params. `KeybindMap::new` takes resolved keysyms; `keysym_from_str` exported for `imgvwr` to resolve at startup. |
-| 2026-04-17 | Phase 0 expanded with full CI detail (7 workflows + dependabot, `.typos.toml`, `deny.toml`). Legacy C/Meson cleanup moved to Phase 10 — must execute last, after v1.0, to preserve C reference tree during implementation.                                                                          |
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-17 | Initial plan created                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-04-17 | Config struct moved entirely to `imgvwr`; `libimgvwr` has no config module. `FilterMethod` lives in `libimgvwr::renderer` as an API type. `viewport::zoom_by` takes scalar min/max params. `KeybindMap::new` takes resolved keysyms; `keysym_from_str` exported for `imgvwr` to resolve at startup.                                                                                                                                 |
+| 2026-04-17 | Phase 0 expanded with full CI detail (7 workflows + dependabot, `.typos.toml`, `deny.toml`). Legacy C/Meson cleanup moved to Phase 10 — must execute last, after v1.0, to preserve C reference tree during implementation.                                                                                                                                                                                                          |
+| 2026-04-18 | New Phase 8 inserted: GPU-accelerated rendering via optional `gpu` feature (`wgpu` 29 + `pollster` 0.4). Backend: Vulkan preferred, GL/EGL fallback (one-line mask, no hand-written EGL). When `gpu` is compiled in, GPU is mandatory for all rendering — no per-image CPU fallback. Former Phase 8 (optional formats) → Phase 9; former Phase 9 (future) → Phase 10; former Phase 10 (C removal) → Phase 11. §1.1, §4, §7 updated. |

@@ -6,6 +6,8 @@ use tracing::{debug, info, warn};
 use std::path::Path;
 
 use image::DynamicImage;
+#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+use libimgvwr::renderer::gpu::GpuContext;
 use libimgvwr::{
     keybinds::{Action, Keysym},
     loader,
@@ -132,11 +134,19 @@ fn on_delete_file(
     }
 }
 
-fn on_scroll(delta: f32, settings: &AppSettings, viewport: &mut ViewportState) -> EventOutcome {
-    viewport.zoom_by(
+fn on_scroll(
+    delta: f32,
+    cursor: (f32, f32),
+    window: (u32, u32),
+    settings: &AppSettings,
+    viewport: &mut ViewportState,
+) -> EventOutcome {
+    viewport.zoom_by_at(
         delta * settings.scale_step,
         settings.min_scale,
         settings.max_scale,
+        cursor,
+        window,
     );
     EventOutcome {
         dirty: true,
@@ -184,10 +194,13 @@ fn process_event(
     navigator: &mut Navigator,
     image: &mut DynamicImage,
     viewport: &mut ViewportState,
+    window: (u32, u32),
 ) -> EventOutcome {
     match event {
         InputEvent::Key(sym) => on_key_action(sym, settings, navigator, image, viewport),
-        InputEvent::Scroll(delta) => on_scroll(delta, settings, viewport),
+        InputEvent::Scroll { delta, cursor } => {
+            on_scroll(delta, cursor, window, settings, viewport)
+        }
         InputEvent::PointerMotion { dx, dy } => on_pointer_motion(dx, dy, viewport),
         InputEvent::PointerButton { .. } => EventOutcome::default(),
     }
@@ -204,6 +217,9 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         filter = ?settings.filter,
         "imgvwr starting"
     );
+
+    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+    let gpu_ctx = GpuContext::new()?;
 
     let mut navigator = Navigator::from_path(&settings.paths[0])?;
     let mut image = loader::load(navigator.current())?;
@@ -233,8 +249,14 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         let mut any_navigated = false;
 
         for event in events {
-            let outcome =
-                process_event(event, &settings, &mut navigator, &mut image, &mut viewport);
+            let outcome = process_event(
+                event,
+                &settings,
+                &mut navigator,
+                &mut image,
+                &mut viewport,
+                wayland.state.window_size,
+            );
             dirty |= outcome.dirty;
             any_navigated |= outcome.navigated;
             if outcome.quit {
@@ -264,7 +286,15 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 renderer::FilterMethod::Nearest
             };
-            let pixels = renderer::render(&image, &viewport, w, h, effective_filter);
+            let pixels = renderer::render(
+                &image,
+                &viewport,
+                w,
+                h,
+                effective_filter,
+                #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+                &gpu_ctx,
+            );
             wayland.commit_frame(&pixels, w, h)?;
         }
 

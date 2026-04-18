@@ -13,3 +13,5 @@ extend-exclude = [
 [default.extend-words]
 # Plural of the PNG acronym (PNGs).
 PN = "PN"
+# Loop variable in WGSL shaders (y-axis index).
+iy = "iy"

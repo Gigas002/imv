@@ -42,6 +42,25 @@ impl ViewportState {
         self.scale = (self.scale * (1.0 + delta)).clamp(min_scale, max_scale);
     }
 
+    /// Zoom around `cursor` (surface coordinates) so the image point under the
+    /// pointer stays fixed. `window` is `(width, height)` in surface pixels.
+    pub fn zoom_by_at(
+        &mut self,
+        delta: f32,
+        min_scale: f32,
+        max_scale: f32,
+        cursor: (f32, f32),
+        window: (u32, u32),
+    ) {
+        let old_scale = self.scale;
+        self.zoom_by(delta, min_scale, max_scale);
+        let ratio = self.scale / old_scale;
+        // The image point under the cursor is at (cursor - window_center - offset) in image
+        // space. After rescaling, adjust offset so that point stays under the cursor.
+        self.offset.0 += (cursor.0 - window.0 as f32 / 2.0 - self.offset.0) * (1.0 - ratio);
+        self.offset.1 += (cursor.1 - window.1 as f32 / 2.0 - self.offset.1) * (1.0 - ratio);
+    }
+
     /// Rotate 90° counter-clockwise.
     pub fn rotate_left(&mut self) {
         self.rotation = (self.rotation + 270) % 360;

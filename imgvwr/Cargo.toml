@@ -21,7 +21,9 @@ png = ["libimgvwr/png"]
 jpeg = ["libimgvwr/jpeg"]
 webp = ["libimgvwr/webp"]
 avif = ["libimgvwr/avif"]
-decorations = ["libimgvwr/decorations"]
+decorations  = ["libimgvwr/decorations"]
+gpu-vulkan   = ["libimgvwr/gpu-vulkan"]
+gpu-gles     = ["libimgvwr/gpu-gles"]
 
 [dependencies]
 libimgvwr = { path = "../libimgvwr", default-features = false }
