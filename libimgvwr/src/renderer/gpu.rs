@@ -499,6 +499,71 @@ fn resize_sampler(
     dst
 }
 
+/// Read back a GPU texture as a Wayland-compatible ARGB8888 byte buffer.
+///
+/// Copies `tex` into a CPU-visible staging buffer, maps it synchronously,
+/// strips wgpu's row-alignment padding, and byte-swaps RGBA → `[B, G, R, A]`
+/// (little-endian ARGB8888, matching `wl_shm::Format::Argb8888`).
+#[allow(dead_code)]
+pub(crate) fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8> {
+    const ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let row_bytes = w * 4;
+    let padded_row = row_bytes.div_ceil(ALIGN) * ALIGN;
+    let buf_size = (padded_row * h) as u64;
+
+    let staging = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: buf_size,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &staging,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_row),
+                rows_per_image: Some(h),
+            },
+        },
+        wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+    );
+    ctx.queue.submit(std::iter::once(encoder.finish()));
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let slice = staging.slice(..);
+    slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+    ctx.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).ok();
+    receiver.recv().unwrap().unwrap();
+
+    let raw = slice.get_mapped_range();
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for row in 0..h {
+        let start = (row * padded_row) as usize;
+        let row_data = &raw[start..start + row_bytes as usize];
+        for chunk in row_data.chunks_exact(4) {
+            // RGBA → little-endian ARGB8888: [B, G, R, A]
+            out.push(chunk[2]);
+            out.push(chunk[1]);
+            out.push(chunk[0]);
+            out.push(chunk[3]);
+        }
+    }
+    drop(raw);
+    staging.unmap();
+    out
+}
+
 /// Two-pass separable kernel resize (horizontal then vertical).
 ///
 /// Pass 1: `(src_w, src_h)` → `(dst_w, src_h)` in `Rgba16Float` (preserves

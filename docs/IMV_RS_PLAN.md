@@ -660,7 +660,7 @@ fn resize_blit(
 
 #### 8.6 — GPU rotation
 
-- [ ] Extend the output of 8.4/8.5 to apply rotation:
+- [x] Extend the output of 8.4/8.5 to apply rotation:
 
 - Add a uniform `rotation: u32` (0/1/2/3 for 0°/90°/180°/270°) to the blit shader.
 - For 90°/270°: swap `dst_w`/`dst_h` when creating the output texture.
@@ -669,7 +669,7 @@ fn resize_blit(
 
 #### 8.7 — Readback: GPU Texture → Vec\<u8\> (ARGB)
 
-- [ ] Implement:
+- [x] Implement:
 
 ```rust
 fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8>
