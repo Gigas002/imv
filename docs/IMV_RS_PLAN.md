@@ -626,7 +626,7 @@ No tests (GPU hardware-dependent).
 
 #### 8.4 — GPU resize: sampler-based blit for Nearest / Triangle / Gaussian
 
-- [ ] Implement:
+- [x] Implement:
 
 ```rust
 fn resize_blit(
