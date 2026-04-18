@@ -1,3 +1,5 @@
+#![cfg(not(any(feature = "gpu-vulkan", feature = "gpu-gles")))]
+
 use image::{DynamicImage, ImageBuffer, Rgba};
 
 use super::*;

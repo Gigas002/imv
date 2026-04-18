@@ -44,7 +44,8 @@ pub enum InputEvent {
     /// A key was pressed; carries the resolved XKB keysym.
     Key(Keysym),
     /// Vertical scroll wheel tick. Positive = scroll down.
-    Scroll(f32),
+    /// Carries the pointer position at the time of the event (surface coords).
+    Scroll { delta: f32, cursor: (f32, f32) },
     /// Left mouse button pressed (`true`) or released (`false`).
     PointerButton { pressed: bool },
     /// Mouse moved while the button was held; delta in surface pixels.
@@ -517,9 +518,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
                 // Normalise: raw axis value is ~10–15 units per wheel notch on most
                 // compositors (wlroots/libinput default is 15). Dividing by 10.0 maps
                 // one notch to ≈1.0, so `scale_step` in config means "zoom % per notch".
-                state
-                    .pending_events
-                    .push(InputEvent::Scroll(-value as f32 / 10.0));
+                let cursor = (state.pointer_pos.0 as f32, state.pointer_pos.1 as f32);
+                state.pending_events.push(InputEvent::Scroll {
+                    delta: -value as f32 / 10.0,
+                    cursor,
+                });
             }
             _ => {}
         }

@@ -683,7 +683,7 @@ fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8>
 
 #### 8.8 — Integration: dispatch CPU vs GPU in renderer
 
-- [ ] Change `libimgvwr::renderer::render` signature:
+- [x] Change `libimgvwr::renderer::render` signature:
 
 ```rust
 pub fn render(
