@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-#[cfg(feature = "gif")]
+#[cfg(any(feature = "gif", feature = "avif-anim"))]
 use std::time::Instant;
 
 use tracing::{debug, info, warn};
@@ -24,7 +24,7 @@ use crate::settings::AppSettings;
 /// Holds either a static single image or an animated sequence of frames.
 enum ImageHolder {
     Static(DynamicImage),
-    #[cfg(feature = "gif")]
+    #[cfg(any(feature = "gif", feature = "avif-anim"))]
     Animated {
         frames: Vec<(DynamicImage, std::time::Duration)>,
         current: usize,
@@ -36,7 +36,7 @@ impl ImageHolder {
     fn current(&self) -> &DynamicImage {
         match self {
             Self::Static(img) => img,
-            #[cfg(feature = "gif")]
+            #[cfg(any(feature = "gif", feature = "avif-anim"))]
             Self::Animated {
                 frames, current, ..
             } => &frames[*current].0,
@@ -46,7 +46,7 @@ impl ImageHolder {
     /// Advance animation by one frame if its display time has elapsed.
     /// Returns `true` if the frame changed and a redraw is needed.
     fn tick(&mut self) -> bool {
-        #[cfg(feature = "gif")]
+        #[cfg(any(feature = "gif", feature = "avif-anim"))]
         if let Self::Animated {
             frames,
             current,
@@ -88,28 +88,45 @@ fn fit_scale(img: &DynamicImage, window: (u32, u32), min_scale: f32, max_scale: 
 }
 
 fn load_image(path: &std::path::Path) -> Result<ImageHolder, loader::LoadError> {
-    #[cfg(feature = "gif")]
-    if path
+    let ext = path
         .extension()
         .and_then(|e: &std::ffi::OsStr| e.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-        == Some("gif")
-    {
-        let gif = loader::load_gif_frames(path)?;
-        if gif.frames.len() > 1 {
-            let next_at = Instant::now() + gif.frames[0].1;
-            return Ok(ImageHolder::Animated {
-                frames: gif.frames,
-                current: 0,
-                next_at,
-            });
-        } else if let Some((img, _)) = gif.frames.into_iter().next() {
-            return Ok(ImageHolder::Static(img));
+        .map(str::to_ascii_lowercase);
+
+    #[cfg(feature = "gif")]
+    if ext.as_deref() == Some("gif") {
+        let anim = loader::load_gif_frames(path)?;
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    #[cfg(feature = "avif-anim")]
+    if ext.as_deref() == Some("avif") {
+        match loader::load_avif_anim_frames(path) {
+            Ok(anim) => return Ok(anim_frames_to_holder(anim)),
+            // Any error (no moov box, no AV1 track, etc.) means this isn't
+            // an animated AVIF sequence — fall through to the static loader.
+            Err(_) => {}
         }
     }
 
     loader::load(path).map(ImageHolder::Static)
+}
+
+#[cfg(any(feature = "gif", feature = "avif-anim"))]
+fn anim_frames_to_holder(anim: loader::AnimFrames) -> ImageHolder {
+    if anim.frames.len() > 1 {
+        let next_at = Instant::now() + anim.frames[0].1;
+        ImageHolder::Animated {
+            frames: anim.frames,
+            current: 0,
+            next_at,
+        }
+    } else {
+        let img = anim.frames.into_iter().next().map(|(img, _)| img);
+        ImageHolder::Static(img.unwrap_or_else(|| {
+            image::DynamicImage::new_rgba8(1, 1)
+        }))
+    }
 }
 
 fn navigate_to(path: PathBuf, image: &mut ImageHolder, viewport: &mut ViewportState) -> bool {

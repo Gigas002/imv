@@ -16,6 +16,7 @@ webp = ["image/webp"]
 avif = ["image/avif-native"]
 jxl  = ["dep:jxl"]
 gif  = ["image/gif", "dep:libc"]
+avif-anim = ["dep:dav1d", "dep:mp4parse", "dep:libc"]
 decorations = []
 gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
 gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
@@ -32,6 +33,8 @@ xkbcommon = "0.9"
 wgpu = { version = "29", optional = true, default-features = false, features = ["wgsl", "vulkan", "gles"] }
 pollster = { version = "0.4", optional = true }
 jxl = { version = "0.4", optional = true, default-features = false }
+dav1d = { version = "0.11", optional = true }
+mp4parse = { version = "0.17", optional = true, features = ["unstable-api"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -7,7 +7,7 @@
 mod tests;
 
 use std::path::Path;
-#[cfg(feature = "gif")]
+#[cfg(any(feature = "gif", feature = "avif-anim"))]
 use std::time::Duration;
 
 use image::{DynamicImage, ImageError};
@@ -115,18 +115,18 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
         })
 }
 
-/// A decoded GIF animation: one or more frames with per-frame display durations.
-#[cfg(feature = "gif")]
-pub struct GifFrames {
+/// A decoded animation: one or more frames with per-frame display durations.
+#[cfg(any(feature = "gif", feature = "avif-anim"))]
+pub struct AnimFrames {
     pub frames: Vec<(DynamicImage, Duration)>,
 }
 
 /// Load an animated GIF from `path`, returning all frames with their display durations.
 ///
 /// Frames with a zero delay are clamped to 10 ms (browser convention).
-/// Static GIFs (single frame) are returned as a one-element `GifFrames`.
+/// Static GIFs (single frame) are returned as a one-element `AnimFrames`.
 #[cfg(feature = "gif")]
-pub fn load_gif_frames(path: &Path) -> Result<GifFrames, LoadError> {
+pub fn load_gif_frames(path: &Path) -> Result<AnimFrames, LoadError> {
     use std::io::BufReader;
 
     use image::AnimationDecoder;
@@ -161,7 +161,247 @@ pub fn load_gif_frames(path: &Path) -> Result<GifFrames, LoadError> {
         })
         .collect();
 
-    Ok(GifFrames { frames })
+    Ok(AnimFrames { frames })
+}
+
+/// Load an animated AVIF sequence from `path`.
+///
+/// Parses the ISOBMFF container with `mp4parse`, extracts per-frame AV1 OBU
+/// data, decodes each frame with `dav1d`, and converts YUV → RGBA.
+/// Returns `Err(LoadError::UnsupportedFormat)` when no AV1 video track is found
+/// (e.g. a static AVIF stored as an image item rather than a video sequence).
+#[cfg(feature = "avif-anim")]
+pub fn load_avif_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
+    use std::io::Cursor;
+
+    use mp4parse::{SampleEntry, TrackType, VideoCodecSpecific, read_mp4};
+    use mp4parse::unstable::{CheckedInteger, create_sample_table};
+
+    let file_bytes = std::fs::read(path).map_err(LoadError::Io)?;
+
+    let mut cursor = Cursor::new(&file_bytes);
+    let ctx = read_mp4(&mut cursor).map_err(|e| avif_anim_container_err(format!("{e:?}")))?;
+
+    // Find the first AV1 video track.
+    let track = ctx
+        .tracks
+        .iter()
+        .find(|t| {
+            matches!(t.track_type, TrackType::Video | TrackType::Picture)
+                && t.stsd.as_ref().map_or(false, |stsd| {
+                    stsd.descriptions.iter().any(|d| {
+                        matches!(
+                            d,
+                            SampleEntry::Video(v)
+                                if matches!(v.codec_specific, VideoCodecSpecific::AV1Config(_))
+                        )
+                    })
+                })
+        })
+        .ok_or(LoadError::UnsupportedFormat)?;
+
+    // Extract the AV1 Sequence Header OBU from the av1C box.
+    let config_obus: Vec<u8> = track
+        .stsd
+        .as_ref()
+        .and_then(|stsd| {
+            stsd.descriptions.iter().find_map(|d| {
+                if let SampleEntry::Video(v) = d {
+                    if let VideoCodecSpecific::AV1Config(av1c) = &v.codec_specific {
+                        return Some(av1c.config_obus().to_vec());
+                    }
+                }
+                None
+            })
+        })
+        .unwrap_or_default();
+
+    let timescale = track.timescale.as_ref().map(|ts| ts.0).unwrap_or(90_000);
+
+    let sample_table =
+        create_sample_table(track, CheckedInteger(0)).ok_or(LoadError::UnsupportedFormat)?;
+
+    if sample_table.is_empty() {
+        return Err(LoadError::UnsupportedFormat);
+    }
+
+    let mut settings = dav1d::Settings::new();
+    // Single-threaded ensures each send_data immediately produces a picture.
+    settings.set_n_threads(1);
+    let mut decoder = dav1d::Decoder::with_settings(&settings)
+        .map_err(|e| avif_anim_decode_err(format!("decoder init: {e:?}")))?;
+
+    let mut frames = Vec::with_capacity(sample_table.len());
+
+    for indice in sample_table.iter() {
+        let start = indice.start_offset.0 as usize;
+        let end = indice.end_offset.0 as usize;
+        if start >= file_bytes.len() || end > file_bytes.len() || start >= end {
+            continue;
+        }
+
+        // Prepend the Sequence Header OBU so each frame is self-contained.
+        let mut obu = config_obus.clone();
+        obu.extend_from_slice(&file_bytes[start..end]);
+
+        decoder
+            .send_data(obu, None, None, None)
+            .map_err(|e| avif_anim_decode_err(format!("send_data: {e:?}")))?;
+
+        let picture = decoder
+            .get_picture()
+            .map_err(|e| avif_anim_decode_err(format!("get_picture: {e:?}")))?;
+
+        let img = yuv_to_rgba(&picture)?;
+
+        let ticks = (indice.end_composition.0 - indice.start_composition.0).max(0) as u64;
+        let ms = if timescale == 0 {
+            100
+        } else {
+            (ticks * 1000 / timescale).max(10)
+        };
+
+        frames.push((img, Duration::from_millis(ms)));
+    }
+
+    if frames.is_empty() {
+        return Err(LoadError::UnsupportedFormat);
+    }
+
+    Ok(AnimFrames { frames })
+}
+
+#[cfg(feature = "avif-anim")]
+fn yuv_to_rgba(picture: &dav1d::Picture) -> Result<DynamicImage, LoadError> {
+    use dav1d::{PixelLayout, PlanarImageComponent};
+    use dav1d::pixel::YUVRange;
+
+    let width = picture.width() as usize;
+    let height = picture.height() as usize;
+    let full_range = picture.color_range() == YUVRange::Full;
+
+    let y_plane = picture.plane(PlanarImageComponent::Y);
+    let stride_y = picture.stride(PlanarImageComponent::Y) as usize;
+
+    let mut pixels = vec![0u8; width * height * 4];
+
+    match picture.pixel_layout() {
+        PixelLayout::I400 => {
+            for row in 0..height {
+                for col in 0..width {
+                    let y = scale_y(y_plane[row * stride_y + col], full_range);
+                    let v = y.clamp(0.0, 255.0) as u8;
+                    let idx = (row * width + col) * 4;
+                    pixels[idx] = v;
+                    pixels[idx + 1] = v;
+                    pixels[idx + 2] = v;
+                    pixels[idx + 3] = 255;
+                }
+            }
+        }
+        PixelLayout::I420 => {
+            let u_plane = picture.plane(PlanarImageComponent::U);
+            let v_plane = picture.plane(PlanarImageComponent::V);
+            let stride_uv = picture.stride(PlanarImageComponent::U) as usize;
+            for row in 0..height {
+                for col in 0..width {
+                    let y = scale_y(y_plane[row * stride_y + col], full_range);
+                    let u = scale_uv(u_plane[(row / 2) * stride_uv + col / 2], full_range);
+                    let v = scale_uv(v_plane[(row / 2) * stride_uv + col / 2], full_range);
+                    write_rgb(&mut pixels, row, col, width, bt709(y, u, v));
+                }
+            }
+        }
+        PixelLayout::I422 => {
+            let u_plane = picture.plane(PlanarImageComponent::U);
+            let v_plane = picture.plane(PlanarImageComponent::V);
+            let stride_uv = picture.stride(PlanarImageComponent::U) as usize;
+            for row in 0..height {
+                for col in 0..width {
+                    let y = scale_y(y_plane[row * stride_y + col], full_range);
+                    let u = scale_uv(u_plane[row * stride_uv + col / 2], full_range);
+                    let v = scale_uv(v_plane[row * stride_uv + col / 2], full_range);
+                    write_rgb(&mut pixels, row, col, width, bt709(y, u, v));
+                }
+            }
+        }
+        PixelLayout::I444 => {
+            let u_plane = picture.plane(PlanarImageComponent::U);
+            let v_plane = picture.plane(PlanarImageComponent::V);
+            let stride_uv = picture.stride(PlanarImageComponent::U) as usize;
+            for row in 0..height {
+                for col in 0..width {
+                    let y = scale_y(y_plane[row * stride_y + col], full_range);
+                    let u = scale_uv(u_plane[row * stride_uv + col], full_range);
+                    let v = scale_uv(v_plane[row * stride_uv + col], full_range);
+                    write_rgb(&mut pixels, row, col, width, bt709(y, u, v));
+                }
+            }
+        }
+    }
+
+    image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width as u32, height as u32, pixels)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| avif_anim_decode_err("buffer size mismatch".into()))
+}
+
+#[cfg(feature = "avif-anim")]
+#[inline]
+fn scale_y(raw: u8, full_range: bool) -> f32 {
+    if full_range {
+        raw as f32
+    } else {
+        (raw as f32 - 16.0) * (255.0 / 219.0)
+    }
+}
+
+#[cfg(feature = "avif-anim")]
+#[inline]
+fn scale_uv(raw: u8, full_range: bool) -> f32 {
+    if full_range {
+        raw as f32 - 128.0
+    } else {
+        (raw as f32 - 128.0) * (255.0 / 224.0)
+    }
+}
+
+// BT.709 YCbCr → RGB
+#[cfg(feature = "avif-anim")]
+#[inline]
+fn bt709(y: f32, u: f32, v: f32) -> (u8, u8, u8) {
+    (
+        (y + 1.5748 * v).clamp(0.0, 255.0) as u8,
+        (y - 0.1873 * u - 0.4681 * v).clamp(0.0, 255.0) as u8,
+        (y + 1.8556 * u).clamp(0.0, 255.0) as u8,
+    )
+}
+
+#[cfg(feature = "avif-anim")]
+#[inline]
+fn write_rgb(pixels: &mut [u8], row: usize, col: usize, width: usize, rgb: (u8, u8, u8)) {
+    let idx = (row * width + col) * 4;
+    pixels[idx] = rgb.0;
+    pixels[idx + 1] = rgb.1;
+    pixels[idx + 2] = rgb.2;
+    pixels[idx + 3] = 255;
+}
+
+#[cfg(feature = "avif-anim")]
+fn avif_anim_container_err(msg: String) -> LoadError {
+    use image::error::{DecodingError, ImageFormatHint};
+    LoadError::Decode(ImageError::Decoding(DecodingError::new(
+        ImageFormatHint::Name("AVIF-anim".to_owned()),
+        msg,
+    )))
+}
+
+#[cfg(feature = "avif-anim")]
+fn avif_anim_decode_err(msg: String) -> LoadError {
+    use image::error::{DecodingError, ImageFormatHint};
+    LoadError::Decode(ImageError::Decoding(DecodingError::new(
+        ImageFormatHint::Name("AVIF-anim".to_owned()),
+        msg,
+    )))
 }
 
 #[cfg(feature = "jxl")]

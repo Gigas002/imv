@@ -71,6 +71,18 @@ fn load_gif_animated_4x4() {
     assert_eq!(result.frames[0].0.height(), 4);
 }
 
+#[cfg(feature = "avif-anim")]
+#[test]
+fn load_avif_anim_4x4() {
+    let avif_bytes = include_bytes!("../../tests/fixtures/4x4_anim.avif");
+    let mut tmp = Builder::new().suffix(".avif").tempfile().unwrap();
+    tmp.write_all(avif_bytes).unwrap();
+    let result = super::load_avif_anim_frames(tmp.path()).unwrap();
+    assert!(!result.frames.is_empty());
+    assert_eq!(result.frames[0].0.width(), 4);
+    assert_eq!(result.frames[0].0.height(), 4);
+}
+
 #[test]
 fn load_unsupported_format() {
     let mut tmp = Builder::new().suffix(".xyz").tempfile().unwrap();

@@ -108,7 +108,7 @@ fn is_supported(path: &Path) -> bool {
         Some("jpg") | Some("jpeg") => true,
         #[cfg(feature = "webp")]
         Some("webp") => true,
-        #[cfg(feature = "avif")]
+        #[cfg(any(feature = "avif", feature = "avif-anim"))]
         Some("avif") => true,
         #[cfg(feature = "jxl")]
         Some("jxl") => true,
