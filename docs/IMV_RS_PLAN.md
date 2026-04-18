@@ -647,7 +647,7 @@ fn resize_blit(
 
 #### 8.5 — High-quality kernels: Lanczos3 and CatmullRom compute shaders
 
-- [ ] Write two-pass separable convolution compute shaders:
+- [x] Write two-pass separable convolution compute shaders:
 
 - `lanczos3.wgsl`: kernel radius 3 (`a=3`); `sinc(x) * sinc(x/a)` weights; horizontal pass → intermediate texture, vertical pass → output texture.
 - `catmull_rom.wgsl`: piecewise cubic kernel; same two-pass structure.

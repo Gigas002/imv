@@ -132,13 +132,32 @@ pub(crate) fn upload_texture(
     texture
 }
 
-/// Resize `src` to `(dst_w, dst_h)` on the GPU using a sampler-based blit.
-///
-/// `Nearest` → nearest-neighbour sampler; all other filters → bilinear.
-/// `Lanczos3` and `CatmullRom` also use bilinear here; they are overridden
-/// by compute shaders in step 8.5.
+/// Resize `src` to `(dst_w, dst_h)`. Dispatches to the appropriate GPU path:
+/// - `Lanczos3` / `CatmullRom` → two-pass separable kernel (fragment shader)
+/// - All others → sampler-based blit (nearest or bilinear)
 #[allow(dead_code)]
 pub(crate) fn resize_blit(
+    ctx: &GpuContext,
+    src: &wgpu::Texture,
+    dst_w: u32,
+    dst_h: u32,
+    filter: FilterMethod,
+) -> wgpu::Texture {
+    match filter {
+        FilterMethod::Lanczos3 => resize_kernel_two_pass(
+            ctx, src, dst_w, dst_h,
+            include_str!("shaders/lanczos3.wgsl"),
+        ),
+        FilterMethod::CatmullRom => resize_kernel_two_pass(
+            ctx, src, dst_w, dst_h,
+            include_str!("shaders/catmull_rom.wgsl"),
+        ),
+        _ => resize_sampler(ctx, src, dst_w, dst_h, filter),
+    }
+}
+
+/// Sampler-based blit for `Nearest`, `Triangle`, and `Gaussian`.
+fn resize_sampler(
     ctx: &GpuContext,
     src: &wgpu::Texture,
     dst_w: u32,
@@ -294,6 +313,204 @@ pub(crate) fn resize_blit(
         rpass.draw(0..4, 0..1);
     }
 
+    ctx.queue.submit(std::iter::once(encoder.finish()));
+
+    dst
+}
+
+/// Two-pass separable kernel resize (horizontal then vertical).
+///
+/// Pass 1: `(src_w, src_h)` → `(dst_w, src_h)` in `Rgba16Float` (preserves
+/// negative Lanczos lobes without clamping).
+/// Pass 2: `(dst_w, src_h)` → `(dst_w, dst_h)` in `Rgba8Unorm` (final output,
+/// clamped for SHM compatibility).
+fn resize_kernel_two_pass(
+    ctx: &GpuContext,
+    src: &wgpu::Texture,
+    dst_w: u32,
+    dst_h: u32,
+    shader_src: &str,
+) -> wgpu::Texture {
+    let src_w = src.width();
+    let src_h = src.height();
+
+    let intermediate = run_kernel_pass(
+        ctx, src,
+        src_w, src_h, dst_w, src_h,
+        wgpu::TextureFormat::Rgba16Float,
+        shader_src, "fs_horizontal",
+    );
+
+    run_kernel_pass(
+        ctx, &intermediate,
+        dst_w, src_h, dst_w, dst_h,
+        wgpu::TextureFormat::Rgba8Unorm,
+        shader_src, "fs_vertical",
+    )
+}
+
+/// Single render pass of a two-pass separable kernel shader.
+///
+/// Binds `src` as a non-filtered texture and a uniform buffer with
+/// `[src_w, src_h, dst_w, dst_h]`; runs a full-screen quad with the
+/// given `entry_point`; writes to a newly created texture of `out_format`.
+#[allow(clippy::too_many_arguments)]
+fn run_kernel_pass(
+    ctx: &GpuContext,
+    src: &wgpu::Texture,
+    src_w: u32,
+    src_h: u32,
+    dst_w: u32,
+    dst_h: u32,
+    out_format: wgpu::TextureFormat,
+    shader_src: &str,
+    entry_point: &str,
+) -> wgpu::Texture {
+    let dst = ctx.device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: dst_w,
+            height: dst_h,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: out_format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+
+    // Uniform buffer: src_size (vec2<u32>) + dst_size (vec2<u32>) = 16 bytes.
+    let mut ub = [0u8; 16];
+    ub[0..4].copy_from_slice(&src_w.to_ne_bytes());
+    ub[4..8].copy_from_slice(&src_h.to_ne_bytes());
+    ub[8..12].copy_from_slice(&dst_w.to_ne_bytes());
+    ub[12..16].copy_from_slice(&dst_h.to_ne_bytes());
+
+    let uniform_buf = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 16,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    ctx.queue.write_buffer(&uniform_buf, 0, &ub);
+
+    let shader = ctx.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
+    });
+
+    let bgl = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = ctx.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
+    });
+
+    let pipeline = ctx.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some(entry_point),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: out_format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            strip_index_format: None,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    });
+
+    let src_view = src.create_view(&wgpu::TextureViewDescriptor::default());
+    let dst_view = dst.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&src_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform_buf,
+                    offset: 0,
+                    size: None,
+                }),
+            },
+        ],
+    });
+
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &dst_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        rpass.set_pipeline(&pipeline);
+        rpass.set_bind_group(0, &bind_group, &[]);
+        rpass.draw(0..4, 0..1);
+    }
     ctx.queue.submit(std::iter::once(encoder.finish()));
 
     dst
