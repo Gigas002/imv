@@ -291,15 +291,67 @@ impl WaylandContext {
             .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e))
     }
 
-    /// Dispatch pending events, blocking until at least one arrives.
+    /// Dispatch pending Wayland events.
     ///
-    /// `timeout_ms` is accepted for API symmetry with Phase 6 but the current
-    /// implementation uses `blocking_dispatch` without a hard timeout.
-    pub fn dispatch(&mut self, _timeout_ms: i32) -> io::Result<()> {
-        self.event_queue
-            .blocking_dispatch(&mut self.state)
-            .map(|_| ())
-            .map_err(io::Error::other)
+    /// Without any animated-format feature: uses `blocking_dispatch`, which
+    /// parks the thread until a compositor event arrives — correct and idle for
+    /// static images.
+    ///
+    /// With an animated-format feature (e.g. `gif`): uses a `poll` timeout so
+    /// the animation loop can call `tick()` on a regular cadence even without
+    /// user input.
+    pub fn dispatch(&mut self, timeout_ms: i32) -> io::Result<()> {
+        #[cfg(any(
+            feature = "gif",
+            feature = "avif-anim",
+            feature = "jxl-anim",
+            feature = "webp-anim",
+            feature = "apng"
+        ))]
+        {
+            use std::os::fd::AsFd;
+            use std::os::unix::io::AsRawFd;
+
+            self.flush()?;
+
+            if let Some(guard) = self.event_queue.prepare_read() {
+                let mut pfd = libc::pollfd {
+                    fd: self.conn.as_fd().as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // SAFETY: &mut pfd is valid for the duration of the call.
+                unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+                // Always attempt the read: WouldBlock means no data arrived
+                // (spurious wakeup or data already drained), which is fine.
+                match guard.read() {
+                    Ok(_) => {}
+                    Err(wayland_client::backend::WaylandError::Io(e))
+                        if e.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(e) => return Err(io::Error::other(e)),
+                }
+            }
+
+            self.event_queue
+                .dispatch_pending(&mut self.state)
+                .map(|_| ())
+                .map_err(io::Error::other)
+        }
+
+        #[cfg(not(any(
+            feature = "gif",
+            feature = "avif-anim",
+            feature = "jxl-anim",
+            feature = "webp-anim",
+            feature = "apng"
+        )))]
+        {
+            let _ = timeout_ms;
+            self.event_queue
+                .blocking_dispatch(&mut self.state)
+                .map(|_| ())
+                .map_err(io::Error::other)
+        }
     }
 
     /// Set the XDG toplevel window title.

@@ -718,13 +718,17 @@ pub fn render(
 
 Each sub-step is independent; do them in any order.
 
-- [ ] **9.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
-- [ ] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
-- [ ] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; verify system `libavif` is available in CI; test `4x4.avif`.
-- [ ] **9.3a** `jxl` feature (future): add `libimgvwr/tests/fixtures/4x4.jxl` when image-rs jxl support is stable (see §10).
-- [ ] **9.4** Background color config: add `background_color: [u8; 3]` (RGB) to `imgvwr::config::ViewerConfig` with default `[0, 0, 0]`; pass it into `renderer::render()` as a fill color parameter (replace the hardcoded `0x00` initialiser in the output buffer).
-- [ ] **9.5** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
-- [ ] **9.6** Verify `--all-features` compiles and tests pass.
+- [x] **9.1** `jpeg` feature: add `libimgvwr/tests/fixtures/4x4.jpg`; verify `cargo build --features jpeg` works; test `loader` with `4x4.jpg` when feature is on.
+- [x] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
+- [x] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; test `4x4.avif`. Note: `image/avif` is encode-only; decoding uses `image/avif-native` (pure-Rust `dav1d` — no system `libavif` required). Feature updated in `libimgvwr/Cargo.toml` accordingly.
+- [x] **9.3a** `jxl` feature: add `libimgvwr/tests/fixtures/4x4.jxl`; use `jxl` crate 0.4 (the `jxl-rs` pure-Rust decoder from the libjxl project) directly — image-rs has no jxl decoder. Feature `jxl = ["dep:jxl"]` in `libimgvwr`; loader detects `.jxl` extension and routes to a dedicated `load_jxl()` path using the typestate `JxlDecoder` API with `JxlPixelFormat::rgba8(0)` output.
+- [x] **9.4** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
+- [x] **9.5** Verify `--all-features` compiles and tests pass.
+- [x] **9.6** animated `gif` playback support. `gif = ["image/gif"]` feature in both crates; `load_gif_frames()` in `libimgvwr::loader` decodes all frames with per-frame `Duration`; `app.rs` uses an `ImageHolder` enum (`Static` / `Animated`) with a `tick()` method that advances frames at their natural delay and returns `true` when a redraw is needed. Single-frame GIFs fall back to `Static`. Fixture: `tests/fixtures/4x4_anim.gif` (2 frames).
+- [x] **9.7** animated `avif` playback support. `avif-anim = ["dep:dav1d", "dep:mp4parse", "dep:libc"]` — separate from the static `avif` feature. `load_avif_anim_frames()` parses the ISOBMFF container with `mp4parse` (already in tree via `avif`), builds a per-frame sample table via `mp4parse::unstable::create_sample_table`, prepends the AV1 Sequence Header from the `av1C` box to each frame's OBU data, decodes with `dav1d` (also already in tree), and converts YUV (I400/I420/I422/I444) → RGBA using BT.709 coefficients. `TrackType::Picture` is used (AVIF sequences use `pict`, not `vide`). Static AVIF falls back to `loader::load()`. `GifFrames` renamed `AnimFrames` for both formats. The `dispatch()` poll path and `ImageHolder::Animated` are now gated on `any(feature = "gif", feature = "avif-anim")`. `libc` dep stays optional, enabled by either animation feature. Fixture: `tests/fixtures/4x4_anim.avif` (4 frames, generated via ffmpeg libaom-av1).
+- [x] **9.8** animated `jxl` playback support. `jxl-anim = ["jxl"]` feature in both crates; `load_jxl_anim_frames()` in `libimgvwr::loader` parses animation header, decodes all frames with per-frame `Duration` (from `VisibleFrameInfo::duration_ms`), dynamically sets `JxlPixelFormat` with `extra_channel_format: vec![None; num_extra]` to fold extra channels into RGBA output. `app.rs` routes `.jxl` extension through `load_jxl_anim_frames()` first, falling back to static `loader::load()` on error. Fixture: `tests/fixtures/4x4_anim.jxl` (2-frame RGBA, created via `cjxl` from APNG).
+- [x] **9.9** animated `webp` playback support. `webp-anim = ["webp"]` feature in both crates; `load_webp_anim_frames()` in `libimgvwr::loader` uses `image::codecs::webp::WebPDecoder` (which implements `AnimationDecoder`) — same pattern as GIF. `app.rs` routes `.webp` through `load_webp_anim_frames()` first, falling back to static `loader::load()` on error. Fixture: `tests/fixtures/4x4_anim.webp` (2-frame RGBA, generated via Pillow).
+- [x] **9.10** animated `apng` playback support. `apng = ["png", "dep:libc"]` feature in both crates; `load_apng_frames()` in `libimgvwr::loader` uses `PngDecoder::is_apng()` to gate on animated PNGs, then `PngDecoder::apng()` to obtain an `ApngDecoder` that implements `AnimationDecoder`. `app.rs` routes `.png` through `load_apng_frames()` first, falling back to static `loader::load()` for plain PNGs. Fixture: `tests/fixtures/4x4_anim.png` (2-frame RGBA, generated via Pillow).
 
 ---
 
@@ -732,13 +736,8 @@ Each sub-step is independent; do them in any order.
 
 These are **not planned** for v1. Document here to avoid scope creep.
 
-- **JPEG XL** (`jxl` feature): add once `image-rs` jxl support is stable or via `jxl-oxide` crate.
 - **dmabuf zero-copy** (`zwp_linux_dmabuf_v1`): instead of GPU→CPU readback→SHM, export the wgpu output texture as a DMA-BUF and attach it to the Wayland surface directly. Eliminates the PCIe readback entirely. Requires `zwp-linux-dmabuf-v1` protocol and `wgpu` texture export via `VkImage` handle.
-- **Pinch-to-zoom**: `zwp-pointer-gestures-v1` for trackpad pinch events.
-- **`cargo deny`**: add `deny.toml` + `deny.yml` CI workflow; license allowlist, advisory check.
 - **Shell completions**: `clap_complete` for `imgvwr` — fish/zsh/bash.
-- **Deploy enablement**: enable `deploy.yml` for release tags.
-- **Additional formats**: only if image-rs gains support without new C dependencies and minimal new code.
 
 ---
 

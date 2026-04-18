@@ -13,7 +13,13 @@ default = ["png"]
 png = ["image/png"]
 jpeg = ["image/jpeg"]
 webp = ["image/webp"]
-avif = ["image/avif"]
+avif = ["image/avif-native"]
+jxl      = ["dep:jxl"]
+jxl-anim = ["jxl", "dep:libc"]
+gif  = ["image/gif", "dep:libc"]
+avif-anim = ["dep:dav1d", "dep:mp4parse", "dep:libc"]
+webp-anim = ["webp", "dep:libc"]
+apng = ["png", "dep:libc"]
 decorations = []
 gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
 gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
@@ -23,11 +29,15 @@ image = { version = "0.25", default-features = false }
 tracing = "0.1"
 memmap2 = "0.9"
 rustix = { version = "1", features = ["fs"] }
+libc = { version = "0.2", optional = true }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 xkbcommon = "0.9"
 wgpu = { version = "29", optional = true, default-features = false, features = ["wgsl", "vulkan", "gles"] }
 pollster = { version = "0.4", optional = true }
+jxl = { version = "0.4", optional = true, default-features = false }
+dav1d = { version = "0.11", optional = true }
+mp4parse = { version = "0.17", optional = true, features = ["unstable-api"] }
 
 [dev-dependencies]
 tempfile = "3"

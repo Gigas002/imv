@@ -1,4 +1,12 @@
 use std::path::PathBuf;
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim",
+    feature = "apng"
+))]
+use std::time::Instant;
 
 use tracing::{debug, info, warn};
 
@@ -18,6 +26,68 @@ use libimgvwr::{
 };
 
 use crate::settings::AppSettings;
+
+/// Holds either a static single image or an animated sequence of frames.
+enum ImageHolder {
+    Static(DynamicImage),
+    #[cfg(any(
+        feature = "gif",
+        feature = "avif-anim",
+        feature = "jxl-anim",
+        feature = "webp-anim",
+        feature = "apng"
+    ))]
+    Animated {
+        frames: Vec<(DynamicImage, std::time::Duration)>,
+        current: usize,
+        next_at: Instant,
+    },
+}
+
+impl ImageHolder {
+    fn current(&self) -> &DynamicImage {
+        match self {
+            Self::Static(img) => img,
+            #[cfg(any(
+                feature = "gif",
+                feature = "avif-anim",
+                feature = "jxl-anim",
+                feature = "webp-anim",
+                feature = "apng"
+            ))]
+            Self::Animated {
+                frames, current, ..
+            } => &frames[*current].0,
+        }
+    }
+
+    /// Advance animation by one frame if its display time has elapsed.
+    /// Returns `true` if the frame changed and a redraw is needed.
+    fn tick(&mut self) -> bool {
+        #[cfg(any(
+            feature = "gif",
+            feature = "avif-anim",
+            feature = "jxl-anim",
+            feature = "webp-anim",
+            feature = "apng"
+        ))]
+        if let Self::Animated {
+            frames,
+            current,
+            next_at,
+        } = self
+        {
+            let now = Instant::now();
+            if now >= *next_at {
+                *current = (*current + 1) % frames.len();
+                let delay = frames[*current].1;
+                *next_at = now + delay;
+                return true;
+            }
+        }
+        false
+    }
+}
 
 #[derive(Default)]
 struct EventOutcome {
@@ -41,8 +111,72 @@ fn fit_scale(img: &DynamicImage, window: (u32, u32), min_scale: f32, max_scale: 
     sw.min(sh).clamp(min_scale, max_scale)
 }
 
-fn navigate_to(path: PathBuf, image: &mut DynamicImage, viewport: &mut ViewportState) -> bool {
-    match loader::load(&path) {
+fn load_image(path: &std::path::Path) -> Result<ImageHolder, loader::LoadError> {
+    let _ext = path
+        .extension()
+        .and_then(|e: &std::ffi::OsStr| e.to_str())
+        .map(str::to_ascii_lowercase);
+
+    #[cfg(feature = "gif")]
+    if _ext.as_deref() == Some("gif") {
+        let anim = loader::load_gif_frames(path)?;
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    #[cfg(feature = "jxl-anim")]
+    if _ext.as_deref() == Some("jxl")
+        && let Ok(anim) = loader::load_jxl_anim_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    #[cfg(feature = "avif-anim")]
+    if _ext.as_deref() == Some("avif")
+        && let Ok(anim) = loader::load_avif_anim_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    #[cfg(feature = "webp-anim")]
+    if _ext.as_deref() == Some("webp")
+        && let Ok(anim) = loader::load_webp_anim_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    #[cfg(feature = "apng")]
+    if _ext.as_deref() == Some("png")
+        && let Ok(anim) = loader::load_apng_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
+    loader::load(path).map(ImageHolder::Static)
+}
+
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim",
+    feature = "apng"
+))]
+fn anim_frames_to_holder(anim: loader::AnimFrames) -> ImageHolder {
+    if anim.frames.len() > 1 {
+        let next_at = Instant::now() + anim.frames[0].1;
+        ImageHolder::Animated {
+            frames: anim.frames,
+            current: 0,
+            next_at,
+        }
+    } else {
+        let img = anim.frames.into_iter().next().map(|(img, _)| img);
+        ImageHolder::Static(img.unwrap_or_else(|| image::DynamicImage::new_rgba8(1, 1)))
+    }
+}
+
+fn navigate_to(path: PathBuf, image: &mut ImageHolder, viewport: &mut ViewportState) -> bool {
+    match load_image(&path) {
         Ok(img) => {
             *image = img;
             viewport.reset();
@@ -58,7 +192,7 @@ fn navigate_to(path: PathBuf, image: &mut DynamicImage, viewport: &mut ViewportS
 
 fn on_navigate_prev(
     navigator: &mut Navigator,
-    image: &mut DynamicImage,
+    image: &mut ImageHolder,
     viewport: &mut ViewportState,
 ) -> EventOutcome {
     let path = navigator.prev().to_path_buf();
@@ -72,7 +206,7 @@ fn on_navigate_prev(
 
 fn on_navigate_next(
     navigator: &mut Navigator,
-    image: &mut DynamicImage,
+    image: &mut ImageHolder,
     viewport: &mut ViewportState,
 ) -> EventOutcome {
     let path = navigator.next().to_path_buf();
@@ -104,7 +238,7 @@ fn on_rotate_right(viewport: &mut ViewportState) -> EventOutcome {
 
 fn on_delete_file(
     navigator: &mut Navigator,
-    image: &mut DynamicImage,
+    image: &mut ImageHolder,
     viewport: &mut ViewportState,
 ) -> EventOutcome {
     let path = navigator.current().to_path_buf();
@@ -166,7 +300,7 @@ fn on_key_action(
     sym: Keysym,
     settings: &AppSettings,
     navigator: &mut Navigator,
-    image: &mut DynamicImage,
+    image: &mut ImageHolder,
     viewport: &mut ViewportState,
 ) -> EventOutcome {
     if sym == settings.key_left {
@@ -192,7 +326,7 @@ fn process_event(
     event: InputEvent,
     settings: &AppSettings,
     navigator: &mut Navigator,
-    image: &mut DynamicImage,
+    image: &mut ImageHolder,
     viewport: &mut ViewportState,
     window: (u32, u32),
 ) -> EventOutcome {
@@ -222,14 +356,14 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
     let gpu_ctx = GpuContext::new()?;
 
     let mut navigator = Navigator::from_path(&settings.paths[0])?;
-    let mut image = loader::load(navigator.current())?;
+    let mut image = load_image(navigator.current())?;
     info!(path = %navigator.current().display(), "loaded first image");
 
     let mut viewport = ViewportState::default();
     let mut wayland = WaylandContext::connect((800, 600), settings.decorations)?;
 
     viewport.scale = fit_scale(
-        &image,
+        image.current(),
         wayland.state.window_size,
         settings.min_scale,
         settings.max_scale,
@@ -247,6 +381,8 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
         let mut dirty = wayland.state.needs_redraw;
         wayland.state.needs_redraw = false;
         let mut any_navigated = false;
+
+        dirty |= image.tick();
 
         for event in events {
             let outcome = process_event(
@@ -266,7 +402,7 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
 
         if any_navigated {
             viewport.scale = fit_scale(
-                &image,
+                image.current(),
                 wayland.state.window_size,
                 settings.min_scale,
                 settings.max_scale,
@@ -287,7 +423,7 @@ pub fn run(settings: AppSettings) -> Result<(), Box<dyn std::error::Error>> {
                 renderer::FilterMethod::Nearest
             };
             let pixels = renderer::render(
-                &image,
+                image.current(),
                 &viewport,
                 w,
                 h,
