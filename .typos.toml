@@ -1,15 +1,3 @@
-# Spell check for docs and Rust; legacy C/Meson trees are excluded until Phase 10.
-[files]
-extend-exclude = [
-  "src/**",
-  "test/**",
-  "subprojects/**",
-  "doc/**",
-  "files/**",
-  "contrib/**",
-  "README.md",
-]
-
 [default.extend-words]
 # Plural of the PNG acronym (PNGs).
 PN = "PN"

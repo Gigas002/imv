@@ -1,169 +1,172 @@
-## imv is now hosted on sr.ht
+# imgvwr
 
-The official repository for imv is now hosted on sr.ht. Please direct all patches and bug reports there. This GitHub repository is no longer updated.
+> **This repository is archived.** Development continues at [Gigas002/imgvwr](https://github.com/Gigas002/imgvwr).
+> Pre-1.0.0 history is preserved on the [`rust` branch of this repo](https://github.com/Gigas002/imv/tree/rust).
 
-<<<<<<< HEAD
-- [Project page](https://sr.ht/~exec64/imv/)
-- [Git repo](https://git.sr.ht/~exec64/imv/)
-- [Mailing list](https://sr.ht/~exec64/imv/lists)
-- [Bug tracker](https://todo.sr.ht/~exec64/imv)
-=======
-[Project home](https://sr.ht/~exec64/imv/)
+---
 
-Features
---------
+A minimal, fast image viewer for Wayland, written in Rust.
 
-* Native Wayland and X11 support
-* Support for dozens of image formats including:
-  * PNG
-  * JPEG
-  * WebP
-  * Animated GIFs
-  * SVG
-  * TIFF
-  * Various RAW formats
-  * Photoshop PSD files
-* Configurable key bindings and behaviour
-* Highly scriptable with IPC via imv-msg
+imgvwr is heavily inspired by [imv](https://sr.ht/~exec64/imv/) by Harry Jeffery — a great piece of software that set the bar for what a lightweight Wayland image viewer should feel like. imgvwr is **not** a port, fork, or direct descendant of imv. It is an independent reimplementation that shares the same spirit: stay small, stay fast, stay out of the way. It does not aim to replicate every feature imv has.
 
-Packages
---------
+---
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/imv.svg)](https://repology.org/project/imv/versions)
+## Requirements
 
-Example Usage
--------------
+**Runtime:**
 
-The following examples are a quick illustration of how you can use imv.
-For detailed documentation see the man page.
+- A Wayland compositor
+- `libwayland-client`
+- `libxkbcommon`
 
-    # Opening images
-    imv image1.png another_image.jpeg a_directory
+**Optional runtime dependencies (feature-gated):**
 
-    # Opening a directory recursively
-    imv -r Photos
+| Feature                      | Runtime requirement                                                  |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `gpu-vulkan`                 | Vulkan-capable driver (Mesa, NVIDIA, etc.)                           |
+| `gpu-gles`                   | EGL + OpenGL ES 2.0 driver                                           |
+| `dmabuf`                     | Compositor with `zwp_linux_dmabuf_v1` support (implies `gpu-vulkan`) |
+| `decorations`                | Compositor with `zxdg_decoration_manager_v1` support                 |
+| `avif` / `avif-anim`         | `libdav1d`                                                           |
+| `jxl` / `jxl-anim`           | `libjxl`                                                             |
+| `gif` / `webp-anim` / `apng` | `libc` (virtually always present)                                    |
 
-    # Opening images via stdin
-    find . -type f -name "*.svg" | imv
+**Build-time:**
 
-    # Open an image fullscreen
-    imv -f image.jpeg
+- Rust toolchain (edition 2024, stable)
+- `pkg-config`
+- Wayland protocol headers (`wayland-protocols`)
 
-    # Viewing images in a random order
-    find . -type f -name "*.png" | shuf | imv
+---
 
-    # Viewing images from stdin
-    curl http://somesi.te/img.png | imv -
+## Building
 
-    # Viewing multiple images from the web
-    curl -Osw '%{filename_effective}\n' 'http://www.example.com/[1-10].jpg' | imv
+Clone the repository and build with Cargo:
 
-### Slideshow
+```sh
+git clone https://github.com/Gigas002/imv
+cd imv
+cargo build --release
+```
 
-imv can be used to display slideshows. You can set the number of seconds to
-show each image for with the `-t` option at start up, or you can configure it
-at runtime using the `t` and `T` hotkeys to increase and decrease the image
-display time, respectively.
+The resulting binary is at `target/release/imgvwr`.
 
-To cycle through a folder of pictures, showing each one for 10 seconds:
+### Selecting features
 
-    imv -t 10 ~/Pictures/London
+By default only PNG support is compiled in. Enable additional formats and backends with `--features`:
 
-#### Custom configuration
+```sh
+# Common formats
+cargo build --release --features jpeg,webp,avif
 
-imv's key bindings can be customised to trigger custom behaviour:
+# Full format set
+cargo build --release --features jpeg,webp,avif,avif-anim,jxl,jxl-anim,gif,webp-anim,apng
 
-    [binds]
+# GPU-accelerated rendering via Vulkan
+cargo build --release --features gpu-vulkan
 
-    # Delete and then close an open image by pressing 'X'
-    <Shift+X> = exec rm "$imv_current_file"; close
+# GPU via OpenGL ES / EGL
+cargo build --release --features gpu-gles
 
-    # Rotate the currently open image by 90 degrees by pressing 'R'
-    <Shift+R> = exec mogrify -rotate 90 "$imv_current_file"
+# DMA-BUF zero-copy (requires gpu-vulkan)
+cargo build --release --features dmabuf
 
-    # Use dmenu as a prompt for tagging the current image
-    u = exec echo "$imv_current_file" >> ~/tags/$(ls ~/tags | dmenu -p "tag")
+# Server-side window decorations
+cargo build --release --features decorations
 
-### Scripting
+# Shell completions (bash, zsh, fish, nushell, elvish, powershell)
+cargo build --release --features completions
 
-With the default bindings, imv can be used to select images in a pipeline by
-using the `p` hotkey to print the current image's path to stdout. The `-l` flag
-can also be used to tell imv to list the remaining paths on exit for a "open
-set of images, close unwanted ones with `x`, then quit imv to pass the
-remaining images through" workflow.
+# Everything
+cargo build --release --all-features
+```
 
-Key bindings can be customised to run arbitrary shell commands. Environment
-variables are exported to expose imv's state to scripts run by it. These
-scripts can in turn modify imv's behaviour by invoking `imv-msg` with
-`$imv_pid`.
+### Feature reference
 
-For example:
+| Feature       | Default | Description                                      |
+| ------------- | ------- | ------------------------------------------------ |
+| `png`         | yes     | PNG decoding                                     |
+| `jpeg`        | no      | JPEG decoding                                    |
+| `webp`        | no      | WebP (static) decoding                           |
+| `webp-anim`   | no      | WebP animation                                   |
+| `avif`        | no      | AVIF (static) decoding via dav1d                 |
+| `avif-anim`   | no      | AVIF animation via dav1d + mp4parse              |
+| `jxl`         | no      | JPEG XL (static) decoding                        |
+| `jxl-anim`    | no      | JPEG XL animation                                |
+| `gif`         | no      | GIF (animated) decoding                          |
+| `apng`        | no      | Animated PNG decoding                            |
+| `decorations` | no      | Server-side window decorations                   |
+| `gpu-vulkan`  | no      | GPU rendering via wgpu/Vulkan                    |
+| `gpu-gles`    | no      | GPU rendering via wgpu/OpenGL ES                 |
+| `dmabuf`      | no      | DMA-BUF zero-copy display (implies `gpu-vulkan`) |
+| `logging`     | yes     | `RUST_LOG`-driven tracing output                 |
+| `config`      | yes     | TOML config file parsing                         |
+| `keybinds`    | yes     | Configurable keybindings                         |
+| `completions` | no      | Shell completion script generation               |
 
-    #!/usr/bin/bash
-    imv "$@" &
-    imv_pid = $!
+---
 
-    while true; do
-      # Some custom logic
-      # ...
+## Usage
 
-      # Close all open files
-      imv-msg $imv_pid close all
-      # Open some new files
-      imv-msg $imv_pid open ~/new_path
+```sh
+imgvwr [OPTIONS] [PATHS]...
+```
 
-      # Run another script against the currently open file
-      imv-msg $imv_pid exec another-script.sh '$imv_current_file'
-    done
+Open one or more image files:
 
+```sh
+imgvwr image.png
+imgvwr *.jpg
+imgvwr ~/pictures/**/*.webp
+```
 
-Installation
-------------
+### CLI options
 
-### Dependencies
+| Option                             | Description                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `[PATHS]...`                       | One or more image file paths to open                                         |
+| `--config <PATH>`                  | Load an additional config file (layered on top of system/user config)        |
+| `-d, --decorations [true\|false]`  | Override window decoration setting                                           |
+| `-a, --antialiasing [true\|false]` | Override antialiasing setting                                                |
+| `--min-scale <FLOAT>`              | Minimum zoom factor (e.g. `0.1`)                                             |
+| `--max-scale <FLOAT>`              | Maximum zoom factor (e.g. `100.0`)                                           |
+| `--scale-step <FLOAT>`             | Zoom step per scroll notch (e.g. `0.1`)                                      |
+| `--filter-method <METHOD>`         | Scaling filter: `nearest`, `triangle`, `catmull-rom`, `gaussian`, `lanczos3` |
+| `--log-level <LEVEL>`              | Log level: `error`, `warn`, `info`, `debug`, `trace`                         |
+| `-h, --help`                       | Print help                                                                   |
 
-| Library        |  Version |  Notes                                         |
-|---------------:|:---------|------------------------------------------------|
-| pthreads       |          | Required.                                      |
-| xkbcommon      |          | Required.                                      |
-| pangocairo     |          | Required.                                      |
-| icu            |          | Required.                                      |
-| xxd            |          | Optional. Required for testing.                |
-| cmocka         |          | Optional. Required for testing.                |
-| X11            |          | Optional. Required for X11 support.            |
-| GL             |          | Optional. Required for X11 support.            |
-| xcb            |          | Optional. Required for X11 support.            |
-| xkbcommon-x11  |          | Optional. Required for X11 support.            |
-| wayland-client |          | Optional. Required for Wayland support.        |
-| wayland-egl    |          | Optional. Required for Wayland support.        |
-| EGL            |          | Optional. Required for Wayland support.        |
-| libtiff        |          | Optional. Provides TIFF support.               |
-| libpng         |          | Optional. Provides PNG support.                |
-| libjpeg-turbo  |          | Optional. Provides JPEG support.               |
-| LittleCMS      | 2        | Optional. Provides CMYK support for JPEGs.     |
-| librsvg        | 2.44     | Optional. Provides SVG support.                |
-| libnsgif       | 1.0.0    | Optional. Provides animated GIF support.       |
-| libnsbmp       |          | Optional. Provides BMP support.                |
-| libheif        | 1.13.0   | Optional. Provides HEIF support.               |
-| libjxl         |          | Optional. Provides JPEGXL support.             |
-| libwebp        |          | Optional. Provides WebP supprt.                |
-| qoi            |          | Optional. Provides QOI support.                |
+CLI options override config file values.
 
-Dependencies are determined by which backends and window systems are enabled
-when building `imv`. You can find a summary of which backends are available
-in [meson_options.txt](meson_options.txt)
+### Default keybindings
 
-    $ meson setup build/
-    $ ninja -C build/
-    # ninja -C build/ install
+| Key      | Action                                    |
+| -------- | ----------------------------------------- |
+| `q`      | Quit                                      |
+| `[`      | Rotate 90° counter-clockwise              |
+| `]`      | Rotate 90° clockwise                      |
+| `Delete` | Delete current file from disk and advance |
 
-`--prefix` controls installation prefix.  If more control over installation
-paths is required, `--bindir`, `--mandir` and `--datadir` are
-available.  Eg. to install `imv` to home directory, run:
+---
 
-    $ meson setup --bindir=~/bin --prefix=~/.local
+## Configuration
 
-License
--------
-`imv`'s source is published under the terms of the [MIT](LICENSE) license.
->>>>>>> upstream/master
+imgvwr loads config in this order, with later sources overriding earlier ones:
+
+1. Built-in defaults
+2. System config: `/etc/imgvwr/config.toml`
+3. User config: `$XDG_CONFIG_HOME/imgvwr/config.toml` (falls back to `~/.config/imgvwr/config.toml`)
+4. `--config <PATH>` override (if provided)
+
+An example config with all options documented is in [`examples/config.toml`](examples/config.toml).
+
+---
+
+## License
+
+AGPL-3.0-only. See [LICENSE](LICENSE.txt).
+
+---
+
+## Acknowledgements
+
+Thanks to **Harry Jeffery** for creating [imv](https://sr.ht/~exec64/imv/). It is the reference for what a minimal Wayland image viewer should be, and the direct inspiration for this project.
