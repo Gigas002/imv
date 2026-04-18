@@ -1,5 +1,10 @@
 # imgvwr
 
+> **This repository is archived.** Development continues at [Gigas002/imgvwr](https://github.com/Gigas002/imgvwr).
+> Pre-1.0.0 history is preserved on the [`rust` branch of this repo](https://github.com/Gigas002/imv/tree/rust).
+
+---
+
 A minimal, fast image viewer for Wayland, written in Rust.
 
 imgvwr is heavily inspired by [imv](https://sr.ht/~exec64/imv/) by Harry Jeffery — a great piece of software that set the bar for what a lightweight Wayland image viewer should feel like. imgvwr is **not** a port, fork, or direct descendant of imv. It is an independent reimplementation that shares the same spirit: stay small, stay fast, stay out of the way. It does not aim to replicate every feature imv has.
