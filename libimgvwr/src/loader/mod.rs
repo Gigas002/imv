@@ -11,7 +11,8 @@ use std::path::Path;
     feature = "gif",
     feature = "avif-anim",
     feature = "jxl-anim",
-    feature = "webp-anim"
+    feature = "webp-anim",
+    feature = "apng"
 ))]
 use std::time::Duration;
 
@@ -131,7 +132,8 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
     feature = "gif",
     feature = "avif-anim",
     feature = "jxl-anim",
-    feature = "webp-anim"
+    feature = "webp-anim",
+    feature = "apng"
 ))]
 pub struct AnimFrames {
     pub frames: Vec<(DynamicImage, Duration)>,
@@ -208,6 +210,60 @@ pub fn load_webp_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
             ImageError::IoError(io_err) => LoadError::Io(io_err),
             other => LoadError::Decode(other),
         })?;
+
+    let frames = raw_frames
+        .into_iter()
+        .map(|frame: image::Frame| {
+            let (numer, denom) = frame.delay().numer_denom_ms();
+            let ms = if denom == 0 {
+                10
+            } else {
+                (numer as u64 / denom as u64).max(10)
+            };
+            let duration = Duration::from_millis(ms);
+            let img = DynamicImage::ImageRgba8(frame.into_buffer());
+            (img, duration)
+        })
+        .collect();
+
+    Ok(AnimFrames { frames })
+}
+
+/// Load an animated PNG (APNG) from `path`, returning all frames with their display durations.
+///
+/// Returns `Err(LoadError::UnsupportedFormat)` for plain (non-animated) PNGs so
+/// callers can fall back to `load()`.
+#[cfg(feature = "apng")]
+pub fn load_apng_frames(path: &Path) -> Result<AnimFrames, LoadError> {
+    use std::io::BufReader;
+
+    use image::AnimationDecoder;
+    use image::codecs::png::PngDecoder;
+
+    let file = std::fs::File::open(path).map_err(LoadError::Io)?;
+    let decoder = PngDecoder::new(BufReader::new(file)).map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
+
+    let is_apng = decoder.is_apng().map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
+
+    if !is_apng {
+        return Err(LoadError::UnsupportedFormat);
+    }
+
+    let apng = decoder.apng().map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
+
+    let raw_frames = apng.into_frames().collect_frames().map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
 
     let frames = raw_frames
         .into_iter()

@@ -3,7 +3,8 @@ use std::path::PathBuf;
     feature = "gif",
     feature = "avif-anim",
     feature = "jxl-anim",
-    feature = "webp-anim"
+    feature = "webp-anim",
+    feature = "apng"
 ))]
 use std::time::Instant;
 
@@ -33,7 +34,8 @@ enum ImageHolder {
         feature = "gif",
         feature = "avif-anim",
         feature = "jxl-anim",
-        feature = "webp-anim"
+        feature = "webp-anim",
+        feature = "apng"
     ))]
     Animated {
         frames: Vec<(DynamicImage, std::time::Duration)>,
@@ -50,7 +52,8 @@ impl ImageHolder {
                 feature = "gif",
                 feature = "avif-anim",
                 feature = "jxl-anim",
-                feature = "webp-anim"
+                feature = "webp-anim",
+                feature = "apng"
             ))]
             Self::Animated {
                 frames, current, ..
@@ -65,7 +68,8 @@ impl ImageHolder {
             feature = "gif",
             feature = "avif-anim",
             feature = "jxl-anim",
-            feature = "webp-anim"
+            feature = "webp-anim",
+            feature = "apng"
         ))]
         if let Self::Animated {
             frames,
@@ -140,6 +144,13 @@ fn load_image(path: &std::path::Path) -> Result<ImageHolder, loader::LoadError> 
         return Ok(anim_frames_to_holder(anim));
     }
 
+    #[cfg(feature = "apng")]
+    if _ext.as_deref() == Some("png")
+        && let Ok(anim) = loader::load_apng_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
     loader::load(path).map(ImageHolder::Static)
 }
 
@@ -147,7 +158,8 @@ fn load_image(path: &std::path::Path) -> Result<ImageHolder, loader::LoadError> 
     feature = "gif",
     feature = "avif-anim",
     feature = "jxl-anim",
-    feature = "webp-anim"
+    feature = "webp-anim",
+    feature = "apng"
 ))]
 fn anim_frames_to_holder(anim: loader::AnimFrames) -> ImageHolder {
     if anim.frames.len() > 1 {

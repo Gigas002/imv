@@ -305,7 +305,8 @@ impl WaylandContext {
             feature = "gif",
             feature = "avif-anim",
             feature = "jxl-anim",
-            feature = "webp-anim"
+            feature = "webp-anim",
+            feature = "apng"
         ))]
         {
             use std::os::fd::AsFd;
@@ -341,7 +342,8 @@ impl WaylandContext {
             feature = "gif",
             feature = "avif-anim",
             feature = "jxl-anim",
-            feature = "webp-anim"
+            feature = "webp-anim",
+            feature = "apng"
         )))]
         {
             let _ = timeout_ms;

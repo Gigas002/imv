@@ -95,6 +95,18 @@ fn load_avif_anim_4x4() {
     assert_eq!(result.frames[0].0.height(), 4);
 }
 
+#[cfg(feature = "apng")]
+#[test]
+fn load_apng_anim_4x4() {
+    let png_bytes = include_bytes!("../../tests/fixtures/4x4_anim.png");
+    let mut tmp = Builder::new().suffix(".png").tempfile().unwrap();
+    tmp.write_all(png_bytes).unwrap();
+    let result = super::load_apng_frames(tmp.path()).unwrap();
+    assert_eq!(result.frames.len(), 2);
+    assert_eq!(result.frames[0].0.width(), 4);
+    assert_eq!(result.frames[0].0.height(), 4);
+}
+
 #[cfg(feature = "webp-anim")]
 #[test]
 fn load_webp_anim_4x4() {
