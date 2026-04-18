@@ -5,12 +5,12 @@ fn default_has_all_fields_set() {
     let cfg = Config::default();
     let w = cfg.window.unwrap();
     assert_eq!(w.decorations, Some(false));
-    assert_eq!(w.antialiasing, Some(true));
+    assert_eq!(w.antialiasing, Some(false));
     let v = cfg.viewer.unwrap();
     assert!((v.min_scale.unwrap() - 0.1).abs() < f32::EPSILON);
     assert!((v.max_scale.unwrap() - 100.0).abs() < f32::EPSILON);
     assert!((v.scale_step.unwrap() - 0.08).abs() < f32::EPSILON);
-    assert_eq!(v.filter_method.unwrap(), FilterMethod::Lanczos3);
+    assert_eq!(v.filter_method.unwrap(), FilterMethod::Nearest);
     let k = cfg.keybindings.unwrap();
     assert_eq!(k.quit.unwrap(), "q");
     assert_eq!(k.rotate_left.unwrap(), "[");

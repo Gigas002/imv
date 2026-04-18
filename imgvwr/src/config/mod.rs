@@ -170,7 +170,7 @@ impl Default for Window {
     fn default() -> Self {
         Window {
             decorations: Some(false),
-            antialiasing: Some(true),
+            antialiasing: Some(false),
         }
     }
 }
@@ -190,21 +190,21 @@ impl Default for Viewer {
             min_scale: Some(0.1),
             max_scale: Some(100.0),
             scale_step: Some(0.08),
-            filter_method: Some(FilterMethod::default()),
+            filter_method: Some(FilterMethod::Nearest),
         }
     }
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
 #[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "config", serde(rename_all = "snake_case"))]
 #[cfg_attr(not(feature = "config"), allow(dead_code))]
 pub enum FilterMethod {
+    #[default]
     Nearest,
     Triangle,
     CatmullRom,
     Gaussian,
-    #[default]
     Lanczos3,
 }
 

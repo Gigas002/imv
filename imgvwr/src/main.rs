@@ -11,7 +11,7 @@ use settings::AppSettings;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
     let config = Config::load_merged(cli.config.as_deref());
-    logger::init(&config);
     let settings = AppSettings::resolve(&cli, &config);
+    logger::init(&settings.log_level);
     app::run(settings)
 }

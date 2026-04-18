@@ -24,6 +24,7 @@ pub(crate) struct AppSettings {
     pub(crate) keybind_map: KeybindMap,
     pub(crate) key_left: Keysym,
     pub(crate) key_right: Keysym,
+    pub(crate) log_level: String,
 }
 
 impl AppSettings {
@@ -31,23 +32,29 @@ impl AppSettings {
         let window = config.window.clone().unwrap_or_default();
         let viewer = config.viewer.clone().unwrap_or_default();
         let keybindings = config.keybindings.clone().unwrap_or_default();
+        let logging = config.logging.clone().unwrap_or_default();
 
         AppSettings {
             paths: cli.paths.clone(),
-            decorations: window.decorations.unwrap_or(false),
-            antialiasing: window.antialiasing.unwrap_or(true),
-            min_scale: viewer.min_scale.unwrap_or(0.1),
-            max_scale: viewer.max_scale.unwrap_or(100.0),
-            scale_step: viewer.scale_step.unwrap_or(0.08),
+            decorations: cli.decorations.or(window.decorations).unwrap_or(false),
+            antialiasing: cli.antialiasing.or(window.antialiasing).unwrap_or(false),
+            min_scale: cli.min_scale.or(viewer.min_scale).unwrap_or(0.1),
+            max_scale: cli.max_scale.or(viewer.max_scale).unwrap_or(100.0),
+            scale_step: cli.scale_step.or(viewer.scale_step).unwrap_or(0.08),
             filter: to_render_filter(
-                viewer
-                    .filter_method
+                cli.filter_method
                     .as_ref()
-                    .unwrap_or(&FilterMethod::Lanczos3),
+                    .or(viewer.filter_method.as_ref())
+                    .unwrap_or(&FilterMethod::Nearest),
             ),
             keybind_map: build_keybind_map(&keybindings),
             key_left: keysym_from_str("Left").expect("Left keysym must resolve"),
             key_right: keysym_from_str("Right").expect("Right keysym must resolve"),
+            log_level: cli
+                .log_level
+                .clone()
+                .or(logging.level)
+                .unwrap_or_else(|| "warn".to_string()),
         }
     }
 }
