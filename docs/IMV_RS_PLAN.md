@@ -705,7 +705,7 @@ pub fn render(
 
 #### 8.9 — CI additions
 
-- [ ] Add two entries to `build.yml` feature matrix: `--features gpu-vulkan` and `--features gpu-gles`.
+- [x] GPU feature matrix: `--all-features` in `build.yml` and `fmt-clippy.yml` already covers both `gpu-vulkan` and `gpu-gles`; no Mesa packages required at compile time (wgpu uses dlopen).
 - Install Mesa Vulkan software rasterizer in CI system deps: `mesa-vulkan-drivers` (Debian/Ubuntu) or `vulkan-swrast` (Arch); install Mesa GLES for the `gpu-gles` entry.
 - Set env in the `gpu-vulkan` matrix entry: `WGPU_BACKEND=vulkan`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` (lavapipe).
 - `fmt-clippy.yml`: add `--features gpu-vulkan` to clippy matrix.
