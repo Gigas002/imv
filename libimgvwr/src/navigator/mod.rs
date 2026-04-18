@@ -110,6 +110,8 @@ fn is_supported(path: &Path) -> bool {
         Some("webp") => true,
         #[cfg(feature = "avif")]
         Some("avif") => true,
+        #[cfg(feature = "jxl")]
+        Some("jxl") => true,
         _ => false,
     }
 }

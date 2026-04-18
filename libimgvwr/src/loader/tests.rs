@@ -48,6 +48,17 @@ fn load_avif_4x4() {
     assert_eq!(img.height(), 4);
 }
 
+#[cfg(feature = "jxl")]
+#[test]
+fn load_jxl_4x4() {
+    let jxl_bytes = include_bytes!("../../tests/fixtures/4x4.jxl");
+    let mut tmp = Builder::new().suffix(".jxl").tempfile().unwrap();
+    tmp.write_all(jxl_bytes).unwrap();
+    let img = load(tmp.path()).unwrap();
+    assert_eq!(img.width(), 4);
+    assert_eq!(img.height(), 4);
+}
+
 #[test]
 fn load_unsupported_format() {
     let mut tmp = Builder::new().suffix(".xyz").tempfile().unwrap();
