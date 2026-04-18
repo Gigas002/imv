@@ -74,6 +74,19 @@ impl Navigator {
         &self.paths[self.current]
     }
 
+    /// Remove the current entry from the list and advance to the next image.
+    /// Returns the new current path, or `None` if the list is now empty.
+    pub fn remove_current(&mut self) -> Option<&Path> {
+        self.paths.remove(self.current);
+        if self.paths.is_empty() {
+            return None;
+        }
+        if self.current >= self.paths.len() {
+            self.current = self.paths.len() - 1;
+        }
+        Some(&self.paths[self.current])
+    }
+
     /// Step back to the previous image, wrapping around to the last before the
     /// first.
     pub fn prev(&mut self) -> &Path {

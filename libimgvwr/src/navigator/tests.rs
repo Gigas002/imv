@@ -51,6 +51,37 @@ fn prev_wraps_around() {
     assert_eq!(nav.current().file_name().unwrap(), "a.png");
 }
 
+#[cfg(feature = "png")]
+#[test]
+fn remove_current_advances_to_next() {
+    let dir = tempdir().unwrap();
+    make_png_files(dir.path(), &["a.png", "b.png", "c.png"]);
+    let mut nav = Navigator::from_path(dir.path()).unwrap();
+    let next = nav.remove_current().unwrap();
+    assert_eq!(next.file_name().unwrap(), "b.png");
+    assert_eq!(nav.paths.len(), 2);
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn remove_current_at_end_wraps_to_last() {
+    let dir = tempdir().unwrap();
+    make_png_files(dir.path(), &["a.png", "b.png"]);
+    let mut nav = Navigator::from_path(dir.path()).unwrap();
+    nav.next();
+    let next = nav.remove_current().unwrap();
+    assert_eq!(next.file_name().unwrap(), "a.png");
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn remove_current_last_file_returns_none() {
+    let dir = tempdir().unwrap();
+    make_png_files(dir.path(), &["a.png"]);
+    let mut nav = Navigator::from_path(dir.path()).unwrap();
+    assert!(nav.remove_current().is_none());
+}
+
 #[test]
 fn empty_dir_returns_error() {
     let dir = tempdir().unwrap();

@@ -17,8 +17,13 @@ fn zoom_clamps_to_max() {
 #[test]
 fn zoom_applies_delta() {
     let mut vp = ViewportState::default();
+    // First step: 1.0 * 1.5 = 1.5
     vp.zoom_by(0.5, 0.1, 100.0);
     assert!((vp.scale - 1.5).abs() < f32::EPSILON);
+    // Second step from non-unit base: 1.5 * 1.5 = 2.25 (not 1.5 + 0.5 = 2.0).
+    // This would fail with additive zoom, proving the multiplicative property.
+    vp.zoom_by(0.5, 0.1, 100.0);
+    assert!((vp.scale - 2.25).abs() < f32::EPSILON);
 }
 
 #[test]

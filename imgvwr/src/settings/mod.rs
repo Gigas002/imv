@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::path::PathBuf;
 
 use libimgvwr::{
@@ -10,29 +13,18 @@ use crate::{
     config::{Config, FilterMethod, Keybindings},
 };
 
-/// Runtime settings derived by merging CLI flags with the loaded config.
-///
-/// Priority for every field: CLI flag > config file value > built-in default.
-/// After [`AppSettings::resolve`] returns, nothing downstream needs `Cli` or `Config`.
 pub(crate) struct AppSettings {
-    /// Image paths to open, taken directly from positional CLI arguments.
     pub(crate) paths: Vec<PathBuf>,
-    /// Whether window title and server-side decorations are enabled (from `[window] decorations`).
     pub(crate) decorations: bool,
-    /// Minimum zoom factor (from `[viewer] min_scale`).
+    pub(crate) antialiasing: bool,
     pub(crate) min_scale: f32,
-    /// Maximum zoom factor (from `[viewer] max_scale`).
     pub(crate) max_scale: f32,
-    /// Zoom step per scroll tick (from `[viewer] scale_step`).
     pub(crate) scale_step: f32,
-    /// Resolved scaling filter for the renderer.
     pub(crate) filter: renderer::FilterMethod,
-    /// Keysym-to-action map built from `[keybindings]`.
     pub(crate) keybind_map: KeybindMap,
-    /// Hardcoded keysym for the left arrow key (previous image).
     pub(crate) key_left: Keysym,
-    /// Hardcoded keysym for the right arrow key (next image).
     pub(crate) key_right: Keysym,
+    pub(crate) log_level: String,
 }
 
 impl AppSettings {
@@ -40,22 +32,29 @@ impl AppSettings {
         let window = config.window.clone().unwrap_or_default();
         let viewer = config.viewer.clone().unwrap_or_default();
         let keybindings = config.keybindings.clone().unwrap_or_default();
+        let logging = config.logging.clone().unwrap_or_default();
 
         AppSettings {
             paths: cli.paths.clone(),
-            decorations: window.decorations.unwrap_or(false),
-            min_scale: viewer.min_scale.unwrap_or(0.1),
-            max_scale: viewer.max_scale.unwrap_or(100.0),
-            scale_step: viewer.scale_step.unwrap_or(0.08),
+            decorations: cli.decorations.or(window.decorations).unwrap_or(false),
+            antialiasing: cli.antialiasing.or(window.antialiasing).unwrap_or(false),
+            min_scale: cli.min_scale.or(viewer.min_scale).unwrap_or(0.1),
+            max_scale: cli.max_scale.or(viewer.max_scale).unwrap_or(100.0),
+            scale_step: cli.scale_step.or(viewer.scale_step).unwrap_or(0.08),
             filter: to_render_filter(
-                viewer
-                    .filter_method
+                cli.filter_method
                     .as_ref()
-                    .unwrap_or(&FilterMethod::Lanczos3),
+                    .or(viewer.filter_method.as_ref())
+                    .unwrap_or(&FilterMethod::Nearest),
             ),
             keybind_map: build_keybind_map(&keybindings),
             key_left: keysym_from_str("Left").expect("Left keysym must resolve"),
             key_right: keysym_from_str("Right").expect("Right keysym must resolve"),
+            log_level: cli
+                .log_level
+                .clone()
+                .or(logging.level)
+                .unwrap_or_else(|| "warn".to_string()),
         }
     }
 }
@@ -70,6 +69,7 @@ fn to_render_filter(f: &FilterMethod) -> renderer::FilterMethod {
     }
 }
 
+#[cfg(feature = "keybinds")]
 fn build_keybind_map(keybindings: &Keybindings) -> KeybindMap {
     let quit = resolve_keysym(keybindings.quit.as_deref().unwrap_or("q"), "q");
     let rotate_left = resolve_keysym(
@@ -83,10 +83,21 @@ fn build_keybind_map(keybindings: &Keybindings) -> KeybindMap {
             .unwrap_or("bracketright"),
         "bracketright",
     );
-    KeybindMap::new(quit, rotate_left, rotate_right)
+    let delete = resolve_keysym(keybindings.delete.as_deref().unwrap_or("Delete"), "Delete");
+    KeybindMap::new(quit, rotate_left, rotate_right, delete)
 }
 
-// Try `name`; fall back to `fallback`, which must be a valid XKB keysym name.
+#[cfg(not(feature = "keybinds"))]
+fn build_keybind_map(_keybindings: &Keybindings) -> KeybindMap {
+    KeybindMap::new(
+        keysym_from_str("q").expect("q keysym must resolve"),
+        keysym_from_str("bracketleft").expect("bracketleft keysym must resolve"),
+        keysym_from_str("bracketright").expect("bracketright keysym must resolve"),
+        keysym_from_str("Delete").expect("Delete keysym must resolve"),
+    )
+}
+
+#[cfg(feature = "keybinds")]
 fn resolve_keysym(name: &str, fallback: &str) -> Keysym {
     keysym_from_str(name)
         .or_else(|_| keysym_from_str(fallback))

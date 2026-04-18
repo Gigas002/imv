@@ -525,15 +525,15 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 ### Phase 7 — Polish and config completion
 
-- [ ] **7.1** Antialiasing: `imgvwr::main` resolves effective `FilterMethod` before calling `renderer::render()` — when `config.window.antialiasing = false`, pass `FilterMethod::Nearest` unconditionally; otherwise pass `config.viewer.filter_method`. No change to `libimgvwr`. Add test in `imgvwr::config` or `imgvwr::main` tests.
+- [x] **7.1** Antialiasing: `imgvwr::main` resolves effective `FilterMethod` before calling `renderer::render()` — when `config.window.antialiasing = false`, pass `FilterMethod::Nearest` unconditionally; otherwise pass `config.viewer.filter_method`. No change to `libimgvwr`. Add test in `imgvwr::config` or `imgvwr::main` tests.
 
-- [ ] **7.2** `min_scale` / `max_scale` clamping: already wired via scalar params in `viewport.zoom_by(delta, min, max)` from Phase 3.1. Verify values flow from `config.viewer` in `imgvwr::main`.
+- [x] **7.2** `min_scale` / `max_scale` clamping: already wired via scalar params in `viewport.zoom_by(delta, min, max)` from Phase 3.1. Verify values flow from `config.viewer` in `imgvwr::main`.
 
-- [ ] **7.3** Initial scale: on image load, compute `fit_to_window` scale — `min(w/img_w, h/img_h)` as f32, clamped to `[min_scale, max_scale]`. Apply as initial `viewport.scale`. Center image.
+- [x] **7.3** Initial scale: on image load, compute `fit_to_window` scale — `min(w/img_w, h/img_h)` as f32, clamped to `[min_scale, max_scale]`. Apply as initial `viewport.scale`. Center image.
 
-- [ ] **7.4** Window resize: on `xdg_toplevel::configure` with new `(w, h)`: update stored size, mark dirty. Re-render at new size.
+- [x] **7.4** Window resize: on `xdg_toplevel::configure` with new `(w, h)`: update stored size, mark dirty. Re-render at new size.
 
-- [ ] **7.5** Graceful errors: if `loader::load()` fails for current path, log warning via `tracing::warn!` and skip to next image. If all paths fail, exit with error message.
+- [x] **7.5** Graceful errors: if `loader::load()` fails for current path, log warning via `tracing::warn!` and skip to next image. If all paths fail, exit with error message.
 
 **Verify**: all unit tests pass; manual test with various image sizes, window resizes.
 

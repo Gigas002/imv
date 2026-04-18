@@ -5,16 +5,17 @@ fn default_has_all_fields_set() {
     let cfg = Config::default();
     let w = cfg.window.unwrap();
     assert_eq!(w.decorations, Some(false));
-    assert_eq!(w.antialiasing, Some(true));
+    assert_eq!(w.antialiasing, Some(false));
     let v = cfg.viewer.unwrap();
     assert!((v.min_scale.unwrap() - 0.1).abs() < f32::EPSILON);
     assert!((v.max_scale.unwrap() - 100.0).abs() < f32::EPSILON);
     assert!((v.scale_step.unwrap() - 0.08).abs() < f32::EPSILON);
-    assert_eq!(v.filter_method.unwrap(), FilterMethod::Lanczos3);
+    assert_eq!(v.filter_method.unwrap(), FilterMethod::Nearest);
     let k = cfg.keybindings.unwrap();
     assert_eq!(k.quit.unwrap(), "q");
     assert_eq!(k.rotate_left.unwrap(), "[");
     assert_eq!(k.rotate_right.unwrap(), "]");
+    assert!(cfg.logging.is_none());
 }
 
 #[test]
@@ -23,6 +24,7 @@ fn empty_toml_gives_all_none() {
     assert!(cfg.window.is_none());
     assert!(cfg.viewer.is_none());
     assert!(cfg.keybindings.is_none());
+    assert!(cfg.logging.is_none());
 }
 
 #[test]
@@ -71,6 +73,7 @@ fn merge_overlay_wins_on_conflict() {
         }),
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let overlay = Config {
         window: Some(Window {
@@ -79,6 +82,7 @@ fn merge_overlay_wins_on_conflict() {
         }),
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let merged = Config::merge(base, overlay);
     let w = merged.window.unwrap();
@@ -93,6 +97,7 @@ fn merge_overlay_none_section_keeps_base() {
         window: None,
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let merged = Config::merge(base.clone(), overlay);
     assert!(merged.window.is_some());

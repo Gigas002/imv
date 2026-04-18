@@ -13,7 +13,10 @@ name = "imgvwr"
 path = "src/main.rs"
 
 [features]
-default = ["png"]
+default = ["png", "logging", "config", "keybinds"]
+logging = ["dep:tracing-subscriber"]
+config = ["dep:toml", "dep:serde"]
+keybinds = []
 png = ["libimgvwr/png"]
 jpeg = ["libimgvwr/jpeg"]
 webp = ["libimgvwr/webp"]
@@ -22,9 +25,10 @@ decorations = ["libimgvwr/decorations"]
 
 [dependencies]
 libimgvwr = { path = "../libimgvwr", default-features = false }
-clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false }
-serde = { version = "1", features = ["derive"] }
-toml = "1.1"
+
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"], optional = true }
+toml = { version = "1.1", optional = true }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
