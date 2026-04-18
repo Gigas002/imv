@@ -1,26 +1,52 @@
-# window properties
+# imgvwr example configuration
+# Copy to ~/.config/imgvwr/config.toml and uncomment / adjust as needed.
+
+# ── Window ────────────────────────────────────────────────────────────────────
 [window]
-# do you want to see window title?
-decorations = true
-# do you want to apply antialiasing to content?
+# Show the window title bar (requires feature "decorations").
+decorations = false
+
+# Apply high-quality resampling when scaling images.
+# Set to false to force nearest-neighbour at all zoom levels (faster).
 antialiasing = true
 
-# image viewer properties
+# ── Viewer ────────────────────────────────────────────────────────────────────
 [viewer]
-# minimal zoom-out value
-min_scale = 0.0
-# maximal zoom-in value
-max_scale = 100.0
-# zoom step
-scale_step = 0.08
-# zoom interpolation/filtering method
-filter_method = "linear"
+# Minimum zoom-out factor (1.0 = original size).
+min_scale = 0.1
 
-# keyboard bindings
+# Maximum zoom-in factor.
+max_scale = 100.0
+
+# Zoom step per scroll notch as a fraction of the current scale (multiplicative).
+# 0.1 = 10 % per notch — raise for faster zoom, lower for finer control.
+scale_step = 0.1
+
+# Resampling filter used when scaling images.
+# Options: "nearest" | "triangle" | "catmull_rom" | "gaussian" | "lanczos3"
+#   nearest    — fastest, pixelated at large zoom
+#   triangle   — bilinear, good balance of speed and quality
+#   catmull_rom — bicubic, sharper than triangle
+#   gaussian   — soft/blurry, rarely preferred
+#   lanczos3   — best quality, slowest (default)
+filter_method = "lanczos3"
+
+# ── Keybindings ───────────────────────────────────────────────────────────────
+# Requires feature "keybinds". When the feature is disabled these values are
+# ignored and the built-in defaults below are always used.
 [keybindings]
-# close the application
+# Close the application.
 quit = "q"
-# rotate image 90 degree left
+
+# Rotate image 90° counter-clockwise.
 rotate_left = "["
-# rotate image 90 degree right
+
+# Rotate image 90° clockwise.
 rotate_right = "]"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+# Requires feature "logging". The RUST_LOG environment variable overrides this
+# value when set.
+[logging]
+# Log level: "error" | "warn" | "info" | "debug" | "trace"
+level = "warn"

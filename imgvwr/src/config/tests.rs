@@ -15,6 +15,7 @@ fn default_has_all_fields_set() {
     assert_eq!(k.quit.unwrap(), "q");
     assert_eq!(k.rotate_left.unwrap(), "[");
     assert_eq!(k.rotate_right.unwrap(), "]");
+    assert!(cfg.logging.is_none());
 }
 
 #[test]
@@ -23,6 +24,7 @@ fn empty_toml_gives_all_none() {
     assert!(cfg.window.is_none());
     assert!(cfg.viewer.is_none());
     assert!(cfg.keybindings.is_none());
+    assert!(cfg.logging.is_none());
 }
 
 #[test]
@@ -71,6 +73,7 @@ fn merge_overlay_wins_on_conflict() {
         }),
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let overlay = Config {
         window: Some(Window {
@@ -79,6 +82,7 @@ fn merge_overlay_wins_on_conflict() {
         }),
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let merged = Config::merge(base, overlay);
     let w = merged.window.unwrap();
@@ -93,6 +97,7 @@ fn merge_overlay_none_section_keeps_base() {
         window: None,
         viewer: None,
         keybindings: None,
+        logging: None,
     };
     let merged = Config::merge(base.clone(), overlay);
     assert!(merged.window.is_some());

@@ -1,18 +1,22 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "config"))]
 mod tests;
 
+#[cfg(feature = "config")]
 use std::{env, error::Error, fs::File, io::Read, path::PathBuf};
 
+#[cfg(feature = "config")]
 use tracing::{debug, info, warn};
 
-use image::imageops::FilterType;
-use serde::{Deserialize, Serialize};
+// ── Config structs ────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {
     pub window: Option<Window>,
     pub viewer: Option<Viewer>,
     pub keybindings: Option<Keybindings>,
+    #[cfg_attr(not(feature = "logging"), allow(dead_code))]
+    pub logging: Option<Logging>,
 }
 
 impl Default for Config {
@@ -21,20 +25,32 @@ impl Default for Config {
             window: Some(Window::default()),
             viewer: Some(Viewer::default()),
             keybindings: Some(Keybindings::default()),
+            logging: None,
         }
     }
 }
 
+// ── load_merged: two cfg-gated implementations ───────────────────────────────
+
+/// When the `config` feature is disabled every caller receives built-in defaults;
+/// no file I/O or TOML parsing is compiled in.
+#[cfg(not(feature = "config"))]
 impl Config {
-    pub fn load(path: &PathBuf) -> Result<Config, Box<dyn Error>> {
+    pub fn load_merged(_override_path: Option<&std::path::Path>) -> Config {
+        Config::default()
+    }
+}
+
+/// Full implementation: built-in defaults → system → user (XDG/HOME) → override.
+#[cfg(feature = "config")]
+impl Config {
+    fn load(path: &PathBuf) -> Result<Config, Box<dyn Error>> {
         let mut file = File::open(path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         toml::from_str(&content).map_err(|e: toml::de::Error| e.into())
     }
 
-    /// Load and merge all config sources in priority order:
-    /// built-in defaults → system → user (XDG or HOME) → `override_path`.
     pub fn load_merged(override_path: Option<&std::path::Path>) -> Config {
         let mut config = Config::default();
 
@@ -126,10 +142,14 @@ impl Config {
                 rotate_left: o.rotate_left.or(b.rotate_left),
                 rotate_right: o.rotate_right.or(b.rotate_right),
             }),
+            logging: merge_section(base.logging, overlay.logging, |b, o| Logging {
+                level: o.level.or(b.level),
+            }),
         }
     }
 }
 
+#[cfg(feature = "config")]
 fn merge_section<T, F: FnOnce(T, T) -> T>(base: Option<T>, overlay: Option<T>, f: F) -> Option<T> {
     match (base, overlay) {
         (Some(b), Some(o)) => Some(f(b, o)),
@@ -137,7 +157,10 @@ fn merge_section<T, F: FnOnce(T, T) -> T>(base: Option<T>, overlay: Option<T>, f
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+// ── Section structs ───────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
 pub struct Window {
     pub decorations: Option<bool>,
     pub antialiasing: Option<bool>,
@@ -152,7 +175,8 @@ impl Default for Window {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
 pub struct Viewer {
     pub min_scale: Option<f32>,
     pub max_scale: Option<f32>,
@@ -171,8 +195,10 @@ impl Default for Viewer {
     }
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "config", serde(rename_all = "snake_case"))]
+#[cfg_attr(not(feature = "config"), allow(dead_code))]
 pub enum FilterMethod {
     Nearest,
     Triangle,
@@ -182,19 +208,9 @@ pub enum FilterMethod {
     Lanczos3,
 }
 
-impl From<FilterMethod> for FilterType {
-    fn from(f: FilterMethod) -> FilterType {
-        match f {
-            FilterMethod::Nearest => FilterType::Nearest,
-            FilterMethod::Triangle => FilterType::Triangle,
-            FilterMethod::CatmullRom => FilterType::CatmullRom,
-            FilterMethod::Gaussian => FilterType::Gaussian,
-            FilterMethod::Lanczos3 => FilterType::Lanczos3,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(not(feature = "keybinds"), allow(dead_code))]
 pub struct Keybindings {
     pub quit: Option<String>,
     pub rotate_left: Option<String>,
@@ -209,4 +225,15 @@ impl Default for Keybindings {
             rotate_right: Some("]".to_string()),
         }
     }
+}
+
+/// Logging configuration. The `level` field accepts the same values as the
+/// `RUST_LOG` environment variable (`"error"`, `"warn"`, `"info"`, `"debug"`,
+/// `"trace"`). `RUST_LOG` always overrides this field when set.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "config", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Default)]
+#[cfg_attr(not(feature = "logging"), allow(dead_code))]
+pub struct Logging {
+    pub level: Option<String>,
 }

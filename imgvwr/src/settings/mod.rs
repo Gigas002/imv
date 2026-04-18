@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::path::PathBuf;
 
 use libimgvwr::{
@@ -10,31 +13,16 @@ use crate::{
     config::{Config, FilterMethod, Keybindings},
 };
 
-/// Runtime settings derived by merging CLI flags with the loaded config.
-///
-/// Priority for every field: CLI flag > config file value > built-in default.
-/// After [`AppSettings::resolve`] returns, nothing downstream needs `Cli` or `Config`.
 pub(crate) struct AppSettings {
-    /// Image paths to open, taken directly from positional CLI arguments.
     pub(crate) paths: Vec<PathBuf>,
-    /// Whether window title and server-side decorations are enabled (from `[window] decorations`).
     pub(crate) decorations: bool,
-    /// Whether antialiasing is enabled. When `false`, `FilterMethod::Nearest` is always used
-    /// regardless of `[viewer] filter_method` (from `[window] antialiasing`).
     pub(crate) antialiasing: bool,
-    /// Minimum zoom factor (from `[viewer] min_scale`).
     pub(crate) min_scale: f32,
-    /// Maximum zoom factor (from `[viewer] max_scale`).
     pub(crate) max_scale: f32,
-    /// Zoom step per scroll tick (from `[viewer] scale_step`).
     pub(crate) scale_step: f32,
-    /// Resolved scaling filter for the renderer.
     pub(crate) filter: renderer::FilterMethod,
-    /// Keysym-to-action map built from `[keybindings]`.
     pub(crate) keybind_map: KeybindMap,
-    /// Hardcoded keysym for the left arrow key (previous image).
     pub(crate) key_left: Keysym,
-    /// Hardcoded keysym for the right arrow key (next image).
     pub(crate) key_right: Keysym,
 }
 
@@ -74,6 +62,7 @@ fn to_render_filter(f: &FilterMethod) -> renderer::FilterMethod {
     }
 }
 
+#[cfg(feature = "keybinds")]
 fn build_keybind_map(keybindings: &Keybindings) -> KeybindMap {
     let quit = resolve_keysym(keybindings.quit.as_deref().unwrap_or("q"), "q");
     let rotate_left = resolve_keysym(
@@ -90,7 +79,16 @@ fn build_keybind_map(keybindings: &Keybindings) -> KeybindMap {
     KeybindMap::new(quit, rotate_left, rotate_right)
 }
 
-// Try `name`; fall back to `fallback`, which must be a valid XKB keysym name.
+#[cfg(not(feature = "keybinds"))]
+fn build_keybind_map(_keybindings: &Keybindings) -> KeybindMap {
+    KeybindMap::new(
+        keysym_from_str("q").expect("q keysym must resolve"),
+        keysym_from_str("bracketleft").expect("bracketleft keysym must resolve"),
+        keysym_from_str("bracketright").expect("bracketright keysym must resolve"),
+    )
+}
+
+#[cfg(feature = "keybinds")]
 fn resolve_keysym(name: &str, fallback: &str) -> Keysym {
     keysym_from_str(name)
         .or_else(|_| keysym_from_str(fallback))
