@@ -249,7 +249,8 @@ webp  = ["image/webp"]
 avif  = ["image/avif"]
 # jxl = ["image/jxl"]       # future; uncomment when image-rs jxl is stable
 decorations = []             # enables xdg-decoration protocol wiring + window title
-gpu = ["dep:wgpu", "dep:pollster"]  # optional GPU-accelerated renderer (Phase 8)
+gpu-vulkan  = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]  # GPU via Vulkan (Phase 8)
+gpu-gles    = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]  # GPU via GLES/EGL (Phase 8)
 ```
 
 **Rules:**
@@ -257,7 +258,7 @@ gpu = ["dep:wgpu", "dep:pollster"]  # optional GPU-accelerated renderer (Phase 8
 - `default` = only PNG. End users opt in to additional formats at build time.
 - All format features forward to the corresponding `image` crate feature.
 - `decorations`: when disabled, window title is never set; `xdg-decoration` negotiation is skipped entirely. No `#[cfg]` spaghetti — use a stub module pattern (see §5.3 testing note).
-- `gpu`: when disabled, `libimgvwr::renderer::gpu` is not compiled; CPU path is always present regardless.
+- `gpu-vulkan` and `gpu-gles` are **independent and mutually exclusive by convention** — enabling both compiles both wgpu backends (larger binary, no other harm). Packagers pick one. Common GPU code is gated on `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]`.
 - Every feature combination must compile: test `--no-default-features`, `--all-features`, and `--features jpeg,webp` in CI.
 
 ### 4.2 `imgvwr` features
@@ -275,7 +276,8 @@ jpeg         = ["libimgvwr/jpeg"]
 webp         = ["libimgvwr/webp"]
 avif         = ["libimgvwr/avif"]
 decorations  = ["libimgvwr/decorations"]
-gpu          = ["libimgvwr/gpu"]
+gpu-vulkan   = ["libimgvwr/gpu-vulkan"]
+gpu-gles     = ["libimgvwr/gpu-gles"]
 ```
 
 Packagers use `cargo build -p imgvwr --no-default-features --features "png,jpeg,webp"` etc.
@@ -550,35 +552,40 @@ All CI config is modelled after the `rust` branch of https://github.com/Gigas002
 
 **New files**:
 
-- `libimgvwr/src/renderer/gpu.rs` — all GPU types and functions (compiled only with `#[cfg(feature = "gpu")]`)
+- `libimgvwr/src/renderer/gpu.rs` — all GPU types and functions (compiled only under `gpu-vulkan` or `gpu-gles`)
 - `libimgvwr/src/renderer/shaders/blit.wgsl` — full-screen quad vertex + fragment shader (sampler-based resize)
 - `libimgvwr/src/renderer/shaders/lanczos3.wgsl` — compute shader: two-pass separable Lanczos3 convolution
 - `libimgvwr/src/renderer/shaders/catmull_rom.wgsl` — compute shader: two-pass separable CatmullRom convolution
 
-Each sub-step below ends in a verified state: `cargo build --workspace --features gpu`, `cargo clippy --workspace --features gpu -- -D warnings`, and `cargo fmt --check` all pass.
+Each sub-step below ends in a verified state: `cargo build --workspace --features gpu-vulkan`, `cargo clippy --workspace --features gpu-vulkan -- -D warnings`, and `cargo fmt --check` all pass.
 
 #### 8.1 — Feature scaffold
 
-- Add to `libimgvwr/Cargo.toml`:
+- [x] Add to `libimgvwr/Cargo.toml`:
 
   ```toml
   [features]
-  gpu = ["dep:wgpu", "dep:pollster"]
+  gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
+  gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
 
   [dependencies]
-  wgpu     = { version = "29", optional = true, default-features = false, features = ["wgsl", "vulkan", "gl"] }
+  wgpu     = { version = "29", optional = true, default-features = false }
   pollster = { version = "0.4", optional = true }
   ```
 
-- Add `gpu = ["libimgvwr/gpu"]` to `imgvwr/Cargo.toml` `[features]`.
-- Create `libimgvwr/src/renderer/gpu.rs` as an empty stub with `#[cfg(feature = "gpu")]` at top.
-- Reference it from `libimgvwr/src/renderer/mod.rs`: `#[cfg(feature = "gpu")] mod gpu;`
+- Add to `imgvwr/Cargo.toml` `[features]`:
+  ```toml
+  gpu-vulkan = ["libimgvwr/gpu-vulkan"]
+  gpu-gles   = ["libimgvwr/gpu-gles"]
+  ```
+- Create `libimgvwr/src/renderer/gpu.rs` as an empty stub.
+- Reference it from `libimgvwr/src/renderer/mod.rs`: `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))] pub mod gpu;`
 
-**Verify**: `cargo build --workspace`, `cargo build --workspace --features gpu`, and `cargo build --workspace --no-default-features` all compile.
+**Verify**: `cargo build --workspace`, `cargo build --workspace --features gpu-vulkan`, `cargo build --workspace --features gpu-gles`, and `cargo build --workspace --no-default-features` all compile. ✓
 
 #### 8.2 — GpuContext: device and queue initialization
 
-Implement `libimgvwr::renderer::gpu::GpuContext`:
+- [ ] Implement `libimgvwr::renderer::gpu::GpuContext`:
 
 ```rust
 pub struct GpuContext {
@@ -600,11 +607,11 @@ impl GpuContext {
 
 `imgvwr::main`: call `GpuContext::new()` at startup; on `Err`, print the error and exit. No `Option` — when the `gpu` feature is compiled in, the GPU is non-negotiable.
 
-**Verify**: build + clippy clean with and without `--features gpu`.
+**Verify**: build + clippy clean with `--features gpu-vulkan`, `--features gpu-gles`, and without either.
 
 #### 8.3 — Image upload: DynamicImage → wgpu Texture
 
-In `libimgvwr::renderer::gpu`, add:
+- [ ] In `libimgvwr::renderer::gpu`, add:
 
 ```rust
 fn upload_texture(device: &wgpu::Device, queue: &wgpu::Queue, img: &DynamicImage) -> wgpu::Texture
@@ -619,7 +626,7 @@ No tests (GPU hardware-dependent).
 
 #### 8.4 — GPU resize: sampler-based blit for Nearest / Triangle / Gaussian
 
-Implement:
+- [ ] Implement:
 
 ```rust
 fn resize_blit(
@@ -640,7 +647,7 @@ fn resize_blit(
 
 #### 8.5 — High-quality kernels: Lanczos3 and CatmullRom compute shaders
 
-Write two-pass separable convolution compute shaders:
+- [ ] Write two-pass separable convolution compute shaders:
 
 - `lanczos3.wgsl`: kernel radius 3 (`a=3`); `sinc(x) * sinc(x/a)` weights; horizontal pass → intermediate texture, vertical pass → output texture.
 - `catmull_rom.wgsl`: piecewise cubic kernel; same two-pass structure.
@@ -653,7 +660,7 @@ Write two-pass separable convolution compute shaders:
 
 #### 8.6 — GPU rotation
 
-Extend the output of 8.4/8.5 to apply rotation:
+- [ ] Extend the output of 8.4/8.5 to apply rotation:
 
 - Add a uniform `rotation: u32` (0/1/2/3 for 0°/90°/180°/270°) to the blit shader.
 - For 90°/270°: swap `dst_w`/`dst_h` when creating the output texture.
@@ -661,6 +668,8 @@ Extend the output of 8.4/8.5 to apply rotation:
 - When `viewport.rotation == 0`: skip rotation uniform update (no-op).
 
 #### 8.7 — Readback: GPU Texture → Vec\<u8\> (ARGB)
+
+- [ ] Implement:
 
 ```rust
 fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8>
@@ -674,7 +683,7 @@ fn readback(ctx: &GpuContext, tex: &wgpu::Texture, w: u32, h: u32) -> Vec<u8>
 
 #### 8.8 — Integration: dispatch CPU vs GPU in renderer
 
-Change `libimgvwr::renderer::render` signature:
+- [ ] Change `libimgvwr::renderer::render` signature:
 
 ```rust
 pub fn render(
@@ -683,25 +692,25 @@ pub fn render(
     dst_w: u32,
     dst_h: u32,
     filter: FilterMethod,
-    #[cfg(feature = "gpu")] gpu: &GpuContext,   // required, not Option
+    #[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))] gpu: &GpuContext,   // required, not Option
 ) -> Vec<u8>
 ```
 
 - Without `gpu` feature: existing CPU imageops path, signature unchanged.
 - With `gpu` feature: always routes through upload → resize (8.4/8.5 dispatch) → rotate (8.6) → readback (8.7). No CPU imageops call anywhere in this branch.
 - `imgvwr::main`: passes `&gpu_context` (initialized once at startup) on every render call.
-- Update existing renderer tests: under `#[cfg(not(feature = "gpu"))]` they test the CPU path unchanged; add a separate `#[cfg(feature = "gpu")]` test block that constructs a `GpuContext` (skipped in CI without GPU via `#[ignore]` or env check).
+- Update existing renderer tests: under `#[cfg(not(any(feature = "gpu-vulkan", feature = "gpu-gles")))]` they test the CPU path unchanged; add a separate `#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]` test block that constructs a `GpuContext` (skipped in CI without GPU via `#[ignore]` or env check).
 
-**Verify**: `cargo test --workspace` passes. `cargo build --workspace --features gpu` compiles. Manual test: `cargo run -p imgvwr --features gpu -- image.png` is smooth for all filter methods and all image sizes.
+**Verify**: `cargo test --workspace` passes. `cargo build --workspace --features gpu-vulkan` compiles. Manual test: `cargo run -p imgvwr --features gpu-vulkan -- image.png` is smooth for all filter methods and all image sizes.
 
 #### 8.9 — CI additions
 
-- Add `gpu` to `build.yml` feature matrix (existing three entries + one for `--features gpu`).
-- Install Mesa Vulkan software rasterizer in CI system deps: `mesa-vulkan-drivers` (Debian/Ubuntu) or `vulkan-swrast` (Arch).
-- Set env in the `gpu` matrix entry: `WGPU_BACKEND=vulkan`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` (lavapipe).
-- `fmt-clippy.yml`: add `--features gpu` to clippy matrix.
+- [ ] Add two entries to `build.yml` feature matrix: `--features gpu-vulkan` and `--features gpu-gles`.
+- Install Mesa Vulkan software rasterizer in CI system deps: `mesa-vulkan-drivers` (Debian/Ubuntu) or `vulkan-swrast` (Arch); install Mesa GLES for the `gpu-gles` entry.
+- Set env in the `gpu-vulkan` matrix entry: `WGPU_BACKEND=vulkan`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` (lavapipe).
+- `fmt-clippy.yml`: add `--features gpu-vulkan` to clippy matrix.
 
-**Verify**: CI green for all feature combinations including `--features gpu`.
+**Verify**: CI green for all feature combinations including `--features gpu-vulkan` and `--features gpu-gles`.
 
 ---
 

@@ -11,6 +11,8 @@
 
 #[cfg(test)]
 mod tests;
+#[cfg(any(feature = "gpu-vulkan", feature = "gpu-gles"))]
+pub mod gpu;
 
 use image::{DynamicImage, ImageBuffer, Rgba, imageops};
 

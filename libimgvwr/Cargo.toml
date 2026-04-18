@@ -15,6 +15,8 @@ jpeg = ["image/jpeg"]
 webp = ["image/webp"]
 avif = ["image/avif"]
 decorations = []
+gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
+gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
 
 [dependencies]
 image = { version = "0.25", default-features = false }
@@ -24,6 +26,8 @@ rustix = { version = "1", features = ["fs"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 xkbcommon = "0.9"
+wgpu = { version = "29", optional = true, default-features = false, features = ["wgsl", "vulkan", "gles"] }
+pollster = { version = "0.4", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
