@@ -1,5 +1,10 @@
 use std::path::PathBuf;
-#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim"
+))]
 use std::time::Instant;
 
 use tracing::{debug, info, warn};
@@ -24,7 +29,12 @@ use crate::settings::AppSettings;
 /// Holds either a static single image or an animated sequence of frames.
 enum ImageHolder {
     Static(DynamicImage),
-    #[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+    #[cfg(any(
+        feature = "gif",
+        feature = "avif-anim",
+        feature = "jxl-anim",
+        feature = "webp-anim"
+    ))]
     Animated {
         frames: Vec<(DynamicImage, std::time::Duration)>,
         current: usize,
@@ -36,7 +46,12 @@ impl ImageHolder {
     fn current(&self) -> &DynamicImage {
         match self {
             Self::Static(img) => img,
-            #[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+            #[cfg(any(
+                feature = "gif",
+                feature = "avif-anim",
+                feature = "jxl-anim",
+                feature = "webp-anim"
+            ))]
             Self::Animated {
                 frames, current, ..
             } => &frames[*current].0,
@@ -46,7 +61,12 @@ impl ImageHolder {
     /// Advance animation by one frame if its display time has elapsed.
     /// Returns `true` if the frame changed and a redraw is needed.
     fn tick(&mut self) -> bool {
-        #[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+        #[cfg(any(
+            feature = "gif",
+            feature = "avif-anim",
+            feature = "jxl-anim",
+            feature = "webp-anim"
+        ))]
         if let Self::Animated {
             frames,
             current,
@@ -113,10 +133,22 @@ fn load_image(path: &std::path::Path) -> Result<ImageHolder, loader::LoadError> 
         return Ok(anim_frames_to_holder(anim));
     }
 
+    #[cfg(feature = "webp-anim")]
+    if _ext.as_deref() == Some("webp")
+        && let Ok(anim) = loader::load_webp_anim_frames(path)
+    {
+        return Ok(anim_frames_to_holder(anim));
+    }
+
     loader::load(path).map(ImageHolder::Static)
 }
 
-#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim"
+))]
 fn anim_frames_to_holder(anim: loader::AnimFrames) -> ImageHolder {
     if anim.frames.len() > 1 {
         let next_at = Instant::now() + anim.frames[0].1;

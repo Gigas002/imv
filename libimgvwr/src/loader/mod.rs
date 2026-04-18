@@ -7,7 +7,12 @@
 mod tests;
 
 use std::path::Path;
-#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim"
+))]
 use std::time::Duration;
 
 use image::{DynamicImage, ImageError};
@@ -122,7 +127,12 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
 }
 
 /// A decoded animation: one or more frames with per-frame display durations.
-#[cfg(any(feature = "gif", feature = "avif-anim", feature = "jxl-anim"))]
+#[cfg(any(
+    feature = "gif",
+    feature = "avif-anim",
+    feature = "jxl-anim",
+    feature = "webp-anim"
+))]
 pub struct AnimFrames {
     pub frames: Vec<(DynamicImage, Duration)>,
 }
@@ -143,6 +153,53 @@ pub fn load_gif_frames(path: &Path) -> Result<AnimFrames, LoadError> {
         ImageError::IoError(io_err) => LoadError::Io(io_err),
         other => LoadError::Decode(other),
     })?;
+
+    let raw_frames = decoder
+        .into_frames()
+        .collect_frames()
+        .map_err(|e| match e {
+            ImageError::IoError(io_err) => LoadError::Io(io_err),
+            other => LoadError::Decode(other),
+        })?;
+
+    let frames = raw_frames
+        .into_iter()
+        .map(|frame: image::Frame| {
+            let (numer, denom) = frame.delay().numer_denom_ms();
+            let ms = if denom == 0 {
+                10
+            } else {
+                (numer as u64 / denom as u64).max(10)
+            };
+            let duration = Duration::from_millis(ms);
+            let img = DynamicImage::ImageRgba8(frame.into_buffer());
+            (img, duration)
+        })
+        .collect();
+
+    Ok(AnimFrames { frames })
+}
+
+/// Load an animated WebP from `path`, returning all frames with their display durations.
+///
+/// Frames with a zero delay are clamped to 10 ms (browser convention).
+/// Static WebPs (single frame) are returned as a one-element `AnimFrames`.
+#[cfg(feature = "webp-anim")]
+pub fn load_webp_anim_frames(path: &Path) -> Result<AnimFrames, LoadError> {
+    use std::io::BufReader;
+
+    use image::AnimationDecoder;
+    use image::codecs::webp::WebPDecoder;
+
+    let file = std::fs::File::open(path).map_err(LoadError::Io)?;
+    let decoder = WebPDecoder::new(BufReader::new(file)).map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
+
+    if !decoder.has_animation() {
+        return Err(LoadError::UnsupportedFormat);
+    }
 
     let raw_frames = decoder
         .into_frames()
