@@ -10,6 +10,14 @@ use crate::config::FilterMethod;
 #[derive(Parser, Debug)]
 #[command(about = "Minimal Wayland image viewer")]
 pub struct Cli {
+    /// Print a shell completion script to stdout and exit.
+    ///
+    /// Supported shells: bash, zsh, fish, nushell.
+    /// Redirect the output to the appropriate location for your shell.
+    #[cfg(feature = "completions")]
+    #[arg(long, value_name = "SHELL")]
+    pub completions: Option<crate::completions::CompletionShell>,
+
     pub paths: Vec<PathBuf>,
 
     #[arg(long, value_name = "PATH")]

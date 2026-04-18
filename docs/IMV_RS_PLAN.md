@@ -732,12 +732,33 @@ Each sub-step is independent; do them in any order.
 
 ---
 
-### Phase 10 — Future / post-1.0
+### Phase 10 — DMA-BUF zero-copy (`dmabuf` feature) ✓
 
-These are **not planned** for v1. Document here to avoid scope creep.
+**Implemented.** Eliminates the GPU→CPU PCIe readback by using a wgpu swapchain backed by `VK_KHR_wayland_surface`. The compositor receives swapchain images as DMA-BUFs directly via the Vulkan WSI layer — no application-level `zwp_linux_dmabuf_v1` protocol code required.
 
-- **dmabuf zero-copy** (`zwp_linux_dmabuf_v1`): instead of GPU→CPU readback→SHM, export the wgpu output texture as a DMA-BUF and attach it to the Wayland surface directly. Eliminates the PCIe readback entirely. Requires `zwp-linux-dmabuf-v1` protocol and `wgpu` texture export via `VkImage` handle.
-- **Shell completions**: `clap_complete` for `imgvwr` — fish/zsh/bash.
+**New feature**: `dmabuf` (implies `gpu-vulkan`).
+
+**Design**:
+- `WaylandContext::display_ptr()` / `surface_ptr()` — expose raw `wl_display*` / `wl_surface*` for wgpu surface creation (requires `wayland-client/system`).
+- `GpuContext::new_with_surface(display_ptr, surface_ptr, w, h)` — creates a `wgpu::Surface<'static>` from the existing Wayland handles; selects a Vulkan adapter compatible with the surface; configures the swapchain.
+- `GpuContext::configure_surface(w, h)` — reconfigures the swapchain on window resize.
+- `GpuContext::render_and_present(src, viewport, dst_w, dst_h, filter)` — runs the same GPU resize+rotate pipeline as Phase 8 but presents directly to the swapchain via `frame.present()` (no `readback()`, no SHM). Uses `set_viewport` + `set_scissor_rect` to blit the visible region into the correct position on the swapchain texture.
+- `imgvwr::app::run()` — when `dmabuf` is active: initialises GPU after `WaylandContext::connect()`, calls `render_and_present` in the render loop, skips `commit_frame` entirely.
+
+---
+
+### Phase 10b — Shell completions (`completions` feature) ✓
+
+**Implemented.** `imgvwr --completions <shell>` prints a completion script to stdout and exits.
+
+**New feature**: `completions` (`clap_complete` + `clap_complete_nushell`, both optional).
+
+Supported shells: `bash`, `zsh`, `fish`, `nushell`.
+
+**Design**:
+- `imgvwr/src/completions/mod.rs` — `CompletionShell` enum (clap `ValueEnum`), `generate_completions(shell)`.
+- `Cli::completions: Option<CompletionShell>` field under `#[cfg(feature = "completions")]`.
+- `main()` handles the early-exit before config/logger init so no Wayland connection is required.
 
 ---
 
@@ -917,3 +938,5 @@ Update this file when:
 | 2026-04-17 | Config struct moved entirely to `imgvwr`; `libimgvwr` has no config module. `FilterMethod` lives in `libimgvwr::renderer` as an API type. `viewport::zoom_by` takes scalar min/max params. `KeybindMap::new` takes resolved keysyms; `keysym_from_str` exported for `imgvwr` to resolve at startup.                                                                                                                                 |
 | 2026-04-17 | Phase 0 expanded with full CI detail (7 workflows + dependabot, `.typos.toml`, `deny.toml`). Legacy C/Meson cleanup moved to Phase 10 — must execute last, after v1.0, to preserve C reference tree during implementation.                                                                                                                                                                                                          |
 | 2026-04-18 | New Phase 8 inserted: GPU-accelerated rendering via optional `gpu` feature (`wgpu` 29 + `pollster` 0.4). Backend: Vulkan preferred, GL/EGL fallback (one-line mask, no hand-written EGL). When `gpu` is compiled in, GPU is mandatory for all rendering — no per-image CPU fallback. Former Phase 8 (optional formats) → Phase 9; former Phase 9 (future) → Phase 10; former Phase 10 (C removal) → Phase 11. §1.1, §4, §7 updated. |
+| 2026-04-19 | Phase 10 implemented: `dmabuf` feature adds wgpu swapchain path (`VK_KHR_wayland_surface`) to eliminate PCIe readback. `wayland-client/system` feature added. `GpuContext::new_with_surface`, `configure_surface`, `render_and_present` added. `gpu_render_inner` extracted as shared helper. |
+| 2026-04-19 | Phase 10b implemented: `completions` feature adds `imgvwr --completions <bash\|zsh\|fish\|nushell>` via `clap_complete` + `clap_complete_nushell`. |
