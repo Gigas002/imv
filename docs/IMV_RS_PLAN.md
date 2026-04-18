@@ -722,8 +722,13 @@ Each sub-step is independent; do them in any order.
 - [x] **9.2** `webp` feature: add `libimgvwr/tests/fixtures/4x4.webp`; same pattern.
 - [x] **9.3** `avif` feature: add `libimgvwr/tests/fixtures/4x4.avif`; test `4x4.avif`. Note: `image/avif` is encode-only; decoding uses `image/avif-native` (pure-Rust `dav1d` — no system `libavif` required). Feature updated in `libimgvwr/Cargo.toml` accordingly.
 - [x] **9.3a** `jxl` feature: add `libimgvwr/tests/fixtures/4x4.jxl`; use `jxl` crate 0.4 (the `jxl-rs` pure-Rust decoder from the libjxl project) directly — image-rs has no jxl decoder. Feature `jxl = ["dep:jxl"]` in `libimgvwr`; loader detects `.jxl` extension and routes to a dedicated `load_jxl()` path using the typestate `JxlDecoder` API with `JxlPixelFormat::rgba8(0)` output.
-- [ ] **9.4** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
-- [ ] **9.5** Verify `--all-features` compiles and tests pass.
+- [x] **9.4** Verify `--no-default-features` compiles (empty format support — `UnsupportedFormat` for all paths).
+- [x] **9.5** Verify `--all-features` compiles and tests pass.
+- [x] **9.6** animated `gif` playback support. `gif = ["image/gif"]` feature in both crates; `load_gif_frames()` in `libimgvwr::loader` decodes all frames with per-frame `Duration`; `app.rs` uses an `ImageHolder` enum (`Static` / `Animated`) with a `tick()` method that advances frames at their natural delay and returns `true` when a redraw is needed. Single-frame GIFs fall back to `Static`. Fixture: `tests/fixtures/4x4_anim.gif` (2 frames).
+- [ ] **9.7** animated `avif` playback support.
+- [ ] **9.8** animated `jxl` playback support.
+- [ ] **9.9** animated `webp` playback support.
+- [ ] **9.10** animated `png` playback support.
 
 ---
 

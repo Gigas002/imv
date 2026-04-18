@@ -112,6 +112,8 @@ fn is_supported(path: &Path) -> bool {
         Some("avif") => true,
         #[cfg(feature = "jxl")]
         Some("jxl") => true,
+        #[cfg(feature = "gif")]
+        Some("gif") => true,
         _ => false,
     }
 }

@@ -15,6 +15,7 @@ jpeg = ["image/jpeg"]
 webp = ["image/webp"]
 avif = ["image/avif-native"]
 jxl  = ["dep:jxl"]
+gif  = ["image/gif", "dep:libc"]
 decorations = []
 gpu-vulkan = ["dep:wgpu", "dep:pollster", "wgpu/vulkan", "wgpu/wgsl"]
 gpu-gles   = ["dep:wgpu", "dep:pollster", "wgpu/gles",   "wgpu/wgsl"]
@@ -24,6 +25,7 @@ image = { version = "0.25", default-features = false }
 tracing = "0.1"
 memmap2 = "0.9"
 rustix = { version = "1", features = ["fs"] }
+libc = { version = "0.2", optional = true }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 xkbcommon = "0.9"

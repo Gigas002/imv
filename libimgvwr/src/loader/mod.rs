@@ -7,6 +7,8 @@
 mod tests;
 
 use std::path::Path;
+#[cfg(feature = "gif")]
+use std::time::Duration;
 
 use image::{DynamicImage, ImageError};
 
@@ -111,6 +113,55 @@ fn load_jxl(path: &Path) -> Result<DynamicImage, LoadError> {
                 "buffer size mismatch",
             )))
         })
+}
+
+/// A decoded GIF animation: one or more frames with per-frame display durations.
+#[cfg(feature = "gif")]
+pub struct GifFrames {
+    pub frames: Vec<(DynamicImage, Duration)>,
+}
+
+/// Load an animated GIF from `path`, returning all frames with their display durations.
+///
+/// Frames with a zero delay are clamped to 10 ms (browser convention).
+/// Static GIFs (single frame) are returned as a one-element `GifFrames`.
+#[cfg(feature = "gif")]
+pub fn load_gif_frames(path: &Path) -> Result<GifFrames, LoadError> {
+    use std::io::BufReader;
+
+    use image::AnimationDecoder;
+    use image::codecs::gif::GifDecoder;
+
+    let file = std::fs::File::open(path).map_err(LoadError::Io)?;
+    let decoder = GifDecoder::new(BufReader::new(file)).map_err(|e| match e {
+        ImageError::IoError(io_err) => LoadError::Io(io_err),
+        other => LoadError::Decode(other),
+    })?;
+
+    let raw_frames = decoder
+        .into_frames()
+        .collect_frames()
+        .map_err(|e| match e {
+            ImageError::IoError(io_err) => LoadError::Io(io_err),
+            other => LoadError::Decode(other),
+        })?;
+
+    let frames = raw_frames
+        .into_iter()
+        .map(|frame: image::Frame| {
+            let (numer, denom) = frame.delay().numer_denom_ms();
+            let ms = if denom == 0 {
+                10
+            } else {
+                (numer as u64 / denom as u64).max(10)
+            };
+            let duration = Duration::from_millis(ms);
+            let img = DynamicImage::ImageRgba8(frame.into_buffer());
+            (img, duration)
+        })
+        .collect();
+
+    Ok(GifFrames { frames })
 }
 
 #[cfg(feature = "jxl")]

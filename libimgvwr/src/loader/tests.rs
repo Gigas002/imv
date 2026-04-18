@@ -59,6 +59,18 @@ fn load_jxl_4x4() {
     assert_eq!(img.height(), 4);
 }
 
+#[cfg(feature = "gif")]
+#[test]
+fn load_gif_animated_4x4() {
+    let gif_bytes = include_bytes!("../../tests/fixtures/4x4_anim.gif");
+    let mut tmp = Builder::new().suffix(".gif").tempfile().unwrap();
+    tmp.write_all(gif_bytes).unwrap();
+    let result = super::load_gif_frames(tmp.path()).unwrap();
+    assert_eq!(result.frames.len(), 2);
+    assert_eq!(result.frames[0].0.width(), 4);
+    assert_eq!(result.frames[0].0.height(), 4);
+}
+
 #[test]
 fn load_unsupported_format() {
     let mut tmp = Builder::new().suffix(".xyz").tempfile().unwrap();
